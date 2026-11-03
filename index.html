@@ -271,11 +271,60 @@ const OBJ = { cut: 'Cutting · perder gordura', bulk: 'Bulking · ganhar massa',
 function ultimoCorpo() { const L = [...S.logs.corpo].sort((a, b) => a.data.localeCompare(b.data)); return L[L.length - 1] || null; }
 function pesoAtual() { const u = ultimoCorpo(); return (u && u.peso) || +S.perfil.peso || 70; }
 
+/* Campos da bioimpedância (mesma ordem do relatório da balança).
+   Para adicionar um campo: inclua aqui e, se quiser, uma faixa em statusBio. */
+const BIO = [
+  ['gordura', 'Gordura', '%', 0.1, 'menos'],
+  ['gorduraKg', 'Peso da gordura', 'kg', 0.1, 'menos'],
+  ['mmePct', 'Massa muscular esquelética', '%', 0.1, 'mais'],
+  ['mmeKg', 'Peso da massa muscular esquelética', 'kg', 0.1, 'mais'],
+  ['mmPct', 'Registro de massa muscular', '%', 0.1, 'mais'],
+  ['mmKg', 'Peso da massa muscular', 'kg', 0.1, 'mais'],
+  ['visceral', 'Gordura visceral', 'nível', 0.5, 'menos'],
+  ['aguaPct', 'Água', '%', 0.1, ''],
+  ['aguaKg', 'Peso da água', 'kg', 0.1, ''],
+  ['tmbBio', 'Metabolismo basal', 'kcal/dia', 1, ''],
+  ['ossos', 'Ossos', 'kg', 0.1, ''],
+  ['proteinaPct', 'Proteína', '%', 0.1, ''],
+  ['lbm', 'Massa magra (LBM)', 'kg', 0.1, 'mais'],
+  ['idadeMet', 'Idade metabólica', 'anos', 1, 'menos'],
+];
+const BIOMAP = Object.fromEntries(BIO.map(b => [b[0], b]));
+const temBio = e => e && (e.gordura || e.lbm || e.mmeKg || e.tmbBio);
+function biosOrdenadas() { return S.logs.corpo.filter(temBio).sort((a, b) => a.data.localeCompare(b.data)); }
+function ultimoBio() { const L = biosOrdenadas(); return L[L.length - 1] || null; }
+function bioAnterior() { const L = biosOrdenadas(); return L.length > 1 ? L[L.length - 2] : null; }
+function completarBio(e) {
+  if (e.gordura && e.peso && !e.gorduraKg) e.gorduraKg = Math.round(e.peso * e.gordura) / 100;
+  if (e.gordura && e.peso && !e.lbm) e.lbm = Math.round((e.peso - e.peso * e.gordura / 100) * 10) / 10;
+  return e;
+}
+/* Faixas de referência aproximadas (balanças de bioimpedância e OMS). Retorna [rótulo, classe]. */
+function statusBio(k, v, entrada) {
+  const f = S.perfil.sexo === 'f', idade = +S.perfil.idade || 30;
+  const faixa = (lims, rots) => { for (let i = 0; i < lims.length; i++) if (v < lims[i]) return rots[i]; return rots[rots.length - 1]; };
+  const B = ['Baixo', 'warn'], OK = ['Saudável', 'ok'], A = ['Alto', 'warn'], MA = ['Muito alto', 'bad'], EX = ['Excelente', 'ok'];
+  switch (k) {
+    case 'imc': return faixa([18.5, 25, 30], [B, OK, A, ['Obesidade', 'bad']]);
+    case 'gordura': return f ? faixa([21, 31, 36], [B, OK, A, MA]) : faixa([11, 21, 26], [B, OK, A, MA]);
+    case 'gorduraKg': { const pct = entrada && entrada.peso ? v / entrada.peso * 100 : null; return pct ? statusBio('gordura', pct) : null; }
+    case 'mmePct': return f ? faixa([30, 36], [B, OK, EX]) : faixa([40, 46], [B, OK, EX]);
+    case 'mmeKg': { const pct = entrada && entrada.peso ? v / entrada.peso * 100 : null; return pct ? statusBio('mmePct', pct) : null; }
+    case 'visceral': return faixa([10, 15], [OK, A, MA]);
+    case 'aguaPct': return f ? faixa([45, 60], [B, OK, EX]) : faixa([50, 65], [B, OK, EX]);
+    case 'proteinaPct': return faixa([16, 20], [B, OK, A]);
+    case 'idadeMet': return v <= idade ? ['Abaixo da idade real', 'ok'] : ['Acima da idade real', 'warn'];
+    default: return null;
+  }
+}
+
 function gordura() {
   const p = S.perfil, u = ultimoCorpo() || {};
   const h = +p.altura || 170, idade = +p.idade || 30, peso = pesoAtual();
-  if (u.gordura) return { bf: +u.gordura, metodo: 'medida informada (bioimpedância/dobras)' };
-  const c = +(u.cintura || p.cintura), nk = +(u.pescoco || p.pescoco), q = +(u.quadril || p.quadril);
+  const bio = ultimoBio();
+  if (bio && bio.gordura) return { bf: +bio.gordura, metodo: `bioimpedância de ${fmtData(bio.data)}` };
+  const fita = [...S.logs.corpo].filter(x => x.cintura).sort((a, b) => a.data.localeCompare(b.data)).pop() || u;
+  const c = +(fita.cintura || p.cintura), nk = +(fita.pescoco || p.pescoco), q = +(fita.quadril || p.quadril);
   if (c && nk && p.sexo === 'm' && c - nk > 0)
     return { bf: 495 / (1.0324 - 0.19077 * Math.log10(c - nk) + 0.15456 * Math.log10(h)) - 450, metodo: 'fórmula da Marinha dos EUA (cintura e pescoço)' };
   if (c && nk && q && p.sexo === 'f' && c + q - nk > 0)
@@ -285,26 +334,31 @@ function gordura() {
   return { bf: 1.2 * imc + 0.23 * idade - 10.8 * (p.sexo === 'm' ? 1 : 0) - 5.4, metodo: 'estimativa pelo IMC (pouco precisa; meça cintura e pescoço)' };
 }
 
-function decidirObjetivo(bf, sexo, exp) {
-  const k = sexo === 'f' ? 8 : 0;
-  if (bf >= 22 + k) return { obj: 'cut', motivo: `Gordura estimada em ${n1(bf)}%. Acima de ${22 + k}%, reduzir gordura primeiro deixa o ganho de massa posterior mais eficiente e melhora a sensibilidade à insulina.` };
+function decidirObjetivo(bf, sexo, exp, medida) {
+  const k = sexo === 'f' ? 8 : 0, G = medida ? 'Gordura medida em' : 'Gordura estimada em';
+  if (bf >= 22 + k) return { obj: 'cut', motivo: `${G} ${n1(bf)}%. Acima de ${22 + k}%, reduzir gordura primeiro deixa o ganho de massa posterior mais eficiente e melhora a sensibilidade à insulina.` };
   if (bf >= 15 + k) {
-    if (exp === 'ini') return { obj: 'recomp', motivo: `Gordura estimada em ${n1(bf)}% e pouco tempo de treino: iniciantes nessa faixa conseguem ganhar músculo e perder gordura ao mesmo tempo, comendo perto da manutenção e com proteína alta.` };
-    return { obj: 'cut', motivo: `Gordura estimada em ${n1(bf)}%. Um cutting moderado até ~${15 + k}% abre espaço para um bulking mais longo e limpo depois.` };
+    if (exp === 'ini') return { obj: 'recomp', motivo: `${G} ${n1(bf)}% e pouco tempo de treino: iniciantes nessa faixa conseguem ganhar músculo e perder gordura ao mesmo tempo, comendo perto da manutenção e com proteína alta.` };
+    return { obj: 'cut', motivo: `${G} ${n1(bf)}%. Um cutting moderado até ~${15 + k}% abre espaço para um bulking mais longo e limpo depois.` };
   }
-  return { obj: 'bulk', motivo: `Gordura estimada em ${n1(bf)}%, faixa boa para ganhar massa. Superávit leve: excesso de calorias vira gordura, não músculo.` };
+  return { obj: 'bulk', motivo: `${G} ${n1(bf)}%, faixa boa para ganhar massa. Superávit leve: excesso de calorias vira gordura, não músculo.` };
 }
 
 function plano() {
   const p = S.perfil, peso = pesoAtual(), h = +p.altura || 170, idade = +p.idade || 30;
   const { bf, metodo } = gordura();
+  const bio = ultimoBio();
   const mif = 10 * peso + 6.25 * h - 5 * idade + (p.sexo === 'f' ? -161 : 5);
-  const mm = peso * (1 - bf / 100);
+  const mm = bio && bio.lbm ? +bio.lbm : peso * (1 - bf / 100);
   const katch = 370 + 21.6 * mm;
   const medido = !metodo.startsWith('estimativa');
-  const tmb = medido ? (mif + katch) / 2 : mif;
+  let tmb, tmbFonte;
+  if (bio && bio.tmbBio) { tmb = +bio.tmbBio; tmbFonte = `medido na bioimpedância de ${fmtData(bio.data)}`; }
+  else if (medido) { tmb = (mif + katch) / 2; tmbFonte = 'média de Mifflin-St Jeor e Katch-McArdle (pela massa magra)'; }
+  else { tmb = mif; tmbFonte = 'fórmula de Mifflin-St Jeor'; }
   const get = tmb * (+p.atividade || 1.375);
-  const sug = decidirObjetivo(bf, p.sexo, S.treino.experiencia);
+  const sug = decidirObjetivo(bf, p.sexo, S.treino.experiencia, metodo.startsWith('bioimped'));
+  if (bio && bio.mmePct) { const st = statusBio('mmePct', +bio.mmePct); sug.motivo += ` Massa muscular esquelética de ${n1(bio.mmePct)}%${st ? ` (${st[0].toLowerCase()})` : ''}.`; }
   const obj = (p.objetivo && p.objetivo !== 'auto') ? p.objetivo : sug.obj;
   const motivo = (p.objetivo && p.objetivo !== 'auto' && p.objetivo !== sug.obj) ? `Você escolheu ${OBJ[obj].toLowerCase()}. Pelos seus dados, a sugestão seria ${OBJ[sug.obj].toLowerCase()}: ${sug.motivo}` : sug.motivo;
   const fator = { cut: 0.8, recomp: 0.95, bulk: 1.1, manter: 1 }[obj];
@@ -317,7 +371,7 @@ function plano() {
   let fat = Math.round(kcal * 0.25 / 9);
   let carb = Math.round((kcal - prot * 4 - fat * 9) / 4);
   if (carb < 100) { fat = Math.round(kcal * 0.2 / 9); carb = Math.round((kcal - prot * 4 - fat * 9) / 4); }
-  return { peso, bf, metodo, tmb, get, obj, motivo, kcal, prot, fat, carb: Math.max(carb, 50), protKg, fator, ajuste, baseProt };
+  return { peso, bf, metodo, tmb, tmbFonte, mm, get, obj, motivo, kcal, prot, fat, carb: Math.max(carb, 50), protKg, fator, ajuste, baseProt };
 }
 
 /* ---------------- FODMAP e lactose ---------------- */
@@ -563,6 +617,49 @@ const fTxt = (name, label, val, o = {}) => `<label class="f" for="f-${name}">${l
 const fSel = (name, label, opts, val, o = {}) => `<label class="f" for="f-${name}">${label}${o.h ? `<span class="h">${o.h}</span>` : ''}<select id="f-${name}" name="${name}">${opts.map(([v, t]) => `<option value="${v}" ${String(val) === String(v) ? 'selected' : ''}>${t}</option>`).join('')}</select></label>`;
 const bar = (v, max) => `<div class="bar ${v > max && max > 0 ? 'over' : ''}"><i style="width:${max > 0 ? clamp(v / max * 100, 0, 100) : 0}%"></i></div>`;
 
+/* Campos da bioimpedância, no formato do relatório da balança */
+function camposBio(vals = {}) {
+  return `<div class="grid2">${BIO.map(([k, l, u, st]) => fNum('b-' + k, `${l} (${u})`, vals[k], { step: st })).join('')}</div>
+    <p class="small muted">Preencha o que a balança mostrar; o resto pode ficar em branco. Peso da gordura e massa magra são calculados se faltarem.</p>`;
+}
+function lerBio(fd, e) { BIO.forEach(([k]) => { const v = num(fd.get('b-' + k)); if (v !== null) e[k] = v; }); return completarBio(e); }
+
+/* Painel de composição corporal: valores, situação e variação desde a avaliação anterior */
+function vComposicao() {
+  const b = ultimoBio();
+  if (!b) return `<section class="panel"><h2>Composição corporal</h2><p class="muted small">Lance os dados da sua bioimpedância em "Nova medição" para ver gordura, massa muscular, gordura visceral e a evolução entre avaliações.</p></section>`;
+  const a = bioAnterior(), h = +S.perfil.altura;
+  const imc = e => e && e.peso && h ? e.peso / ((h / 100) ** 2) : null;
+  const linhas = [['peso', 'Peso', 'kg', 0, ''], ['imc', 'IMC', '', 0, ''], ...BIO];
+  const val = (e, k) => !e ? null : k === 'imc' ? imc(e) : (e[k] ?? null);
+  const rows = linhas.map(([k, l, u, , dir]) => {
+    const v = val(b, k); if (v === null || v === undefined) return '';
+    const st = statusBio(k, +v, b);
+    const va = val(a, k); let dv = '';
+    if (va !== null && va !== undefined) {
+      const d = v - va; const bom = dir === 'mais' ? d > 0 : dir === 'menos' ? d < 0 : null;
+      dv = Math.abs(d) < 0.05 ? '<span class="muted">=</span>' : `<span style="color:${bom === null ? 'var(--muted)' : bom ? 'var(--good)' : 'var(--bad)'}">${d > 0 ? '+' : ''}${n1(d)}</span>`;
+    }
+    return `<tr><td>${l}</td><td class="r num">${k === 'tmbBio' ? n0(v) : n1(v)} <span class="muted small">${u}</span></td><td>${st ? `<span class="chip ${st[1]}">${st[0]}</span>` : ''}</td>${a ? `<td class="r num">${dv}</td>` : ''}</tr>`;
+  }).join('');
+  const resumo = [];
+  if (a && diasEntre(a.data, b.data) >= 7) {
+    const dG = (b.gorduraKg ?? 0) - (a.gorduraKg ?? 0), mk = b.mmeKg && a.mmeKg ? 'mmeKg' : (b.lbm && a.lbm ? 'lbm' : null);
+    const dM = mk ? b[mk] - a[mk] : null, nomeM = mk === 'mmeKg' ? 'massa muscular esquelética' : 'massa magra', obj = plano().obj;
+    if (b.gorduraKg && a.gorduraKg && dM !== null) {
+      if (dG < 0 && dM > 0) resumo.push({ t: 'info', m: `Recomposição em andamento: ${n1(-dG)} kg de gordura a menos e ${n1(dM)} kg de ${nomeM} a mais em ${diasEntre(a.data, b.data)} dias.` });
+      else if (obj === 'cut' && dM < -0.5) resumo.push({ t: 'warn', m: `Você perdeu ${n1(-dM)} kg de ${nomeM} no cutting. Mantenha a proteína alta, a progressão de carga no treino e evite perder mais de 1% do peso por semana.` });
+      else if (obj === 'bulk' && dG > 0 && dM > 0 && dG > dM * 1.5) resumo.push({ t: 'warn', m: `No bulking você ganhou ${n1(dG)} kg de gordura e ${n1(dM)} kg de ${nomeM}. Mais gordura que músculo: vale reduzir um pouco o superávit.` });
+      else resumo.push({ t: 'info', m: `Desde ${fmtData(a.data)}: gordura ${dG >= 0 ? '+' : ''}${n1(dG)} kg, ${nomeM} ${dM >= 0 ? '+' : ''}${n1(dM)} kg.` });
+    }
+  }
+  if (b.visceral && b.visceral >= 10) resumo.push({ t: 'bad', m: 'Gordura visceral acima de 9 está ligada a maior risco metabólico. Priorize a redução de gordura.' });
+  return `<section class="panel"><div class="row between"><h2>Composição corporal</h2><span class="tag">bioimpedância ${fmtData(b.data)}</span></div>
+    <div class="tw"><table><thead><tr><th>Métrica</th><th class="r">Valor</th><th>Situação</th>${a ? `<th class="r">Desde ${fmtData(a.data)}</th>` : ''}</tr></thead><tbody>${rows}</tbody></table></div>
+    ${resumo.map(r => `<div class="note ${r.t} small">${r.m}</div>`).join('')}
+    <p class="small muted">Faixas de referência aproximadas. A bioimpedância varia com hidratação e horário: compare avaliações feitas sempre nas mesmas condições.</p></section>`;
+}
+
 function lineChart(pts, unit) {
   if (pts.length < 2) return '<p class="muted small">Registre pelo menos duas medições para ver o gráfico.</p>';
   const W = 640, H = 190, pl = 44, pr = 14, pt = 12, pb = 26;
@@ -587,12 +684,15 @@ function lineChart(pts, unit) {
 /* ---------------- Questionário ---------------- */
 let wiz = null;
 const STEPS = [
-  { id: 'corpo', sec: 'Saúde', titulo: 'Seu corpo hoje', intro: 'Com esses dados o app estima seu gasto calórico e o percentual de gordura. Cintura e pescoço deixam a estimativa bem mais precisa que o IMC.',
-    html: p => `<div class="grid2">${fTxt('nome', 'Como quer ser chamado', p.nome)}${fSel('sexo', 'Sexo biológico', [['m', 'Masculino'], ['f', 'Feminino']], p.sexo || 'm', { h: 'usado nas fórmulas' })}</div>
-      <div class="grid2">${fNum('idade', 'Idade', p.idade, { req: 1, min: 14 })}${fNum('altura', 'Altura (cm)', p.altura, { req: 1, min: 120 })}${fNum('peso', 'Peso (kg)', p.peso, { req: 1, min: 30, step: 0.1 })}</div>
-      <div class="grid2">${fNum('gordura', '% de gordura', p.gordura, { h: 'opcional, se tiver bioimpedância ou dobras', step: 0.1 })}${fNum('cintura', 'Cintura (cm)', p.cintura, { h: 'na altura do umbigo', step: 0.5 })}${fNum('pescoco', 'Pescoço (cm)', p.pescoco, { h: 'abaixo do pomo de Adão', step: 0.5 })}${fNum('quadril', 'Quadril (cm)', p.quadril, { h: 'só mulheres, na parte mais larga', step: 0.5 })}</div>`,
-    read: fd => { const p = S.perfil; ['nome', 'sexo'].forEach(k => p[k] = fd.get(k)); ['idade', 'altura', 'peso', 'gordura', 'cintura', 'pescoco', 'quadril'].forEach(k => p[k] = num(fd.get(k)));
-      const e = { data: hoje(), peso: p.peso, cintura: p.cintura, pescoco: p.pescoco, quadril: p.quadril, gordura: p.gordura };
+  { id: 'corpo', sec: 'Saúde', titulo: 'Seu corpo hoje', intro: 'Dados básicos e, se tiver, o relatório da bioimpedância. Com a bioimpedância o app usa seu metabolismo e sua massa magra medidos, em vez de estimativas.',
+    html: p => { const b = ultimoBio() || {}; return `<div class="grid2">${fTxt('nome', 'Como quer ser chamado', p.nome)}${fSel('sexo', 'Sexo biológico', [['m', 'Masculino'], ['f', 'Feminino']], p.sexo || 'm', { h: 'usado nas fórmulas' })}</div>
+      <div class="grid2">${fNum('idade', 'Idade real', p.idade, { req: 1, min: 14 })}${fNum('altura', 'Altura (cm)', p.altura, { req: 1, min: 120 })}${fNum('peso', 'Peso (kg)', b.peso ?? p.peso, { req: 1, min: 30, step: 0.1 })}</div>
+      <div class="stack"><h3>Bioimpedância</h3>${fTxt('bioData', 'Data da avaliação', b.data || hoje(), { type: 'date' })}${camposBio(b)}</div>
+      <details ${b.gordura ? '' : 'open'}><summary>Medidas com fita (opcional)</summary><div class="grid2" style="margin-top:10px">${fNum('cintura', 'Cintura (cm)', p.cintura, { h: 'na altura do umbigo', step: 0.5 })}${fNum('pescoco', 'Pescoço (cm)', p.pescoco, { h: 'abaixo do pomo de Adão', step: 0.5 })}${fNum('quadril', 'Quadril (cm)', p.quadril, { h: 'só mulheres, na parte mais larga', step: 0.5 })}</div><p class="small muted">Sem bioimpedância, cintura e pescoço estimam a gordura bem melhor que o IMC.</p></details>`; },
+    read: fd => { const p = S.perfil; ['nome', 'sexo'].forEach(k => p[k] = fd.get(k)); ['idade', 'altura', 'peso', 'cintura', 'pescoco', 'quadril'].forEach(k => p[k] = num(fd.get(k)));
+      const e = { data: fd.get('bioData') || hoje(), peso: p.peso };
+      ['cintura', 'pescoco', 'quadril'].forEach(k => { if (p[k]) e[k] = p[k]; });
+      lerBio(fd, e); p.gordura = e.gordura ?? null;
       S.logs.corpo = S.logs.corpo.filter(x => x.data !== e.data).concat(e); } },
   { id: 'rotina', sec: 'Saúde', titulo: 'Rotina e objetivo', intro: 'Se você não tiver certeza do objetivo, deixe em "decidir pelos meus dados": o app escolhe entre cutting, bulking e recomposição pela sua composição corporal.',
     html: p => `${fSel('atividade', 'Nível de atividade fora o treino', [['1.2', 'Sedentário (trabalho sentado, pouco passo)'], ['1.375', 'Leve (anda um pouco, treina 3–4x)'], ['1.55', 'Moderado (treina 5x ou trabalho em pé)'], ['1.725', 'Alto (trabalho físico + treino)']], p.atividade || '1.375')}
@@ -650,7 +750,8 @@ function vHoje() {
   const fezHoje = S.logs.treinos.some(s => s.data === hoje());
   return `<section class="hero"><p class="eyebrow">${dataLonga}</p>
     <h1>${p.nome ? `Olá, ${esc(p.nome)}.` : 'Seu dia'}</h1>
-    <div class="row"><span class="chip acc">${OBJ[pl.obj]}</span><span class="chip num">${n0(pl.kcal)} kcal</span><span class="chip num">${pl.prot} g proteína</span></div></section>
+    <div class="row"><span class="chip acc">${OBJ[pl.obj]}</span><span class="chip num">${n0(pl.kcal)} kcal</span><span class="chip num">${pl.prot} g proteína</span></div>
+    <p class="small muted">${ultimoBio() ? `Gordura ${n1(pl.bf)}% · massa magra ${n1(pl.mm)} kg · bioimpedância de ${fmtData(ultimoBio().data)}` : `Gordura estimada em ${n1(pl.bf)}%. Lance sua bioimpedância em Progresso para mais precisão.`}</p></section>
   ${!storageOk ? '<div class="note bad">O navegador está bloqueando o salvamento. Abra o app pelo endereço publicado ou faça backup manual em Ajustes.</div>' : ''}
   <section class="panel"><div class="row between"><h2>Treino de hoje</h2>${fezHoje ? '<span class="chip ok">feito</span>' : ''}</div>
     ${tr ? `<p><b>Treino ${td}</b> · ${tr.nome} · <span class="muted">${tr.ex.length} exercícios</span></p><div><button class="btn" data-act="abrirTreino" data-id="${td}">Abrir treino ${td}</button></div>` : '<p class="muted">Dia de descanso. Recuperação e sono fazem parte do treino: é no repouso que a síntese de proteína muscular acontece.</p>'}</section>
@@ -680,7 +781,8 @@ function vDieta() {
     <div class="grid2"><div class="stat"><span>Calorias</span><b>${n0(pl.kcal)}</b></div><div class="stat"><span>Proteína</span><b>${pl.prot} g</b></div><div class="stat"><span>Carboidrato</span><b>${pl.carb} g</b></div><div class="stat"><span>Gordura</span><b>${pl.fat} g</b></div></div>
     <details><summary>Como esses números foram calculados</summary><ul class="small">
       <li>Gordura corporal: <b>${n1(pl.bf)}%</b>, por ${pl.metodo}.</li>
-      <li>Metabolismo basal: <b class="num">${n0(pl.tmb)} kcal</b> (Mifflin-St Jeor${pl.metodo.startsWith('estimativa') ? '' : ', média com Katch-McArdle pela massa magra'}). Gasto diário total: <b class="num">${n0(pl.get)} kcal</b>.</li>
+      <li>Metabolismo basal: <b class="num">${n0(pl.tmb)} kcal</b> (${pl.tmbFonte}). Gasto diário total, com seu nível de atividade: <b class="num">${n0(pl.get)} kcal</b>.</li>
+      <li>Massa magra usada: <b class="num">${n1(pl.mm)} kg</b>.</li>
       <li>${deficit < 0 ? `Déficit de ${-deficit}%` : deficit > 0 ? `Superávit de ${deficit}%` : 'Calorias de manutenção'} para ${OBJ[pl.obj].toLowerCase()}${pl.ajuste ? `, com ajuste de ${pl.ajuste > 0 ? '+' : ''}${pl.ajuste} kcal pela sua evolução de peso` : ''}.</li>
       <li>Proteína: ${n1(pl.protKg)} g por kg${Math.round(pl.baseProt) !== Math.round(pl.peso) ? ' de peso ajustado' : ''} (faixa de 1,6 a 2,2 g/kg para ganho de massa magra${p.dieta === 'vegana' ? '; dietas só vegetais pedem um pouco mais, até 2,4 g/kg' : ''}).</li>
       <li>Gordura entre 20% e 35% das calorias, para preservar a produção hormonal. O resto vem de carboidrato.</li></ul></details></section>
@@ -785,13 +887,17 @@ function vProgresso() {
       ${av.delta ? (podeAjustar ? `<div><button class="btn" data-act="ajuste" data-d="${av.delta}">Aplicar ${av.delta > 0 ? '+' : ''}${av.delta} kcal</button></div>` : `<p class="small muted">Último ajuste em ${fmtData(S.perfil.ultimoAjuste)}. Espere 2 semanas entre ajustes para o corpo responder.</p>`) : ''}` : ''}`
       : '<p class="muted">São precisos pelo menos 3 registros de peso em 10 dias ou mais para calcular a tendência.</p>'}
     ${S.perfil.ajusteKcal ? `<p class="small muted">Ajuste acumulado: ${S.perfil.ajusteKcal > 0 ? '+' : ''}${S.perfil.ajusteKcal} kcal. <button class="linkbtn" data-act="ajusteZero">zerar</button></p>` : ''}</section>
+  ${vComposicao()}
   <section class="panel"><h2>Peso</h2>${lineChart(L.filter(x => x.peso).map(x => ({ x: x.data, y: +x.peso })), 'peso em kg')}</section>
+  ${biosOrdenadas().filter(x => x.gordura).length >= 2 ? `<section class="panel"><h2>Gordura corporal (%)</h2>${lineChart(biosOrdenadas().filter(x => x.gordura).map(x => ({ x: x.data, y: +x.gordura })), 'gordura em %')}</section>` : ''}
+  ${biosOrdenadas().filter(x => x.mmeKg).length >= 2 ? `<section class="panel"><h2>Massa muscular esquelética (kg)</h2>${lineChart(biosOrdenadas().filter(x => x.mmeKg).map(x => ({ x: x.data, y: +x.mmeKg })), 'massa muscular esquelética em kg')}</section>` : ''}
   ${L.filter(x => x.cintura).length >= 2 ? `<section class="panel"><h2>Cintura</h2>${lineChart(L.filter(x => x.cintura).map(x => ({ x: x.data, y: +x.cintura })), 'cintura em cm')}<p class="small muted">No cutting e na recomposição, cintura caindo com peso estável é sinal de que você ganha músculo e perde gordura.</p></section>` : ''}
   <form class="panel stack" data-form="corpo"><h2>Nova medição</h2><div class="grid2">
     ${fTxt('data', 'Data', hoje(), { type: 'date' })}${fNum('peso', 'Peso (kg)', '', { req: 1, step: 0.1, ph: n1(u.peso || pesoAtual()) })}${fNum('cintura', 'Cintura (cm)', '', { step: 0.5, ph: u.cintura || '' })}${fNum('pescoco', 'Pescoço (cm)', '', { step: 0.5, ph: u.pescoco || '' })}
-    ${S.perfil.sexo === 'f' ? fNum('quadril', 'Quadril (cm)', '', { step: 0.5, ph: u.quadril || '' }) : ''}${fNum('gordura', '% gordura', '', { step: 0.1, h: 'se fez bioimpedância' })}</div>
-    <div><button class="btn" type="submit">Salvar medição</button></div><p class="small muted">Meça cintura e pescoço a cada 2 semanas, sempre no mesmo horário.</p></form>
-  ${L.length ? `<section class="panel"><h2>Registros</h2><div class="tw"><table><thead><tr><th>Data</th><th class="r">Peso</th><th class="r">Cintura</th><th class="r">Pescoço</th><th></th></tr></thead><tbody>${[...L].reverse().slice(0, 20).map(x => `<tr><td>${fmtData(x.data)}</td><td class="r num">${x.peso ? n1(x.peso) : '–'}</td><td class="r num">${x.cintura ? n1(x.cintura) : '–'}</td><td class="r num">${x.pescoco ? n1(x.pescoco) : '–'}</td><td class="r"><button class="x linkbtn" data-act="rmCorpo" data-d="${x.data}" aria-label="Apagar">×</button></td></tr>`).join('')}</tbody></table></div></section>` : ''}`;
+    ${S.perfil.sexo === 'f' ? fNum('quadril', 'Quadril (cm)', '', { step: 0.5, ph: u.quadril || '' }) : ''}</div>
+    <details><summary>Dados da bioimpedância</summary><div style="margin-top:10px">${camposBio()}</div></details>
+    <div><button class="btn" type="submit">Salvar medição</button></div><p class="small muted">Peso 2 a 3 vezes por semana, fita a cada 2 semanas e bioimpedância a cada 4 a 8 semanas, sempre em jejum e no mesmo horário.</p></form>
+  ${L.length ? `<section class="panel"><h2>Registros</h2><div class="tw"><table><thead><tr><th>Data</th><th class="r">Peso</th><th class="r">Gordura</th><th class="r">Cintura</th><th class="r">Pescoço</th><th></th></tr></thead><tbody>${[...L].reverse().slice(0, 20).map(x => `<tr><td>${fmtData(x.data)}</td><td class="r num">${x.peso ? n1(x.peso) : '–'}</td><td class="r num">${x.gordura ? n1(x.gordura) + '%' : '–'}</td><td class="r num">${x.cintura ? n1(x.cintura) : '–'}</td><td class="r num">${x.pescoco ? n1(x.pescoco) : '–'}</td><td class="r"><button class="x linkbtn" data-act="rmCorpo" data-d="${x.data}" aria-label="Apagar">×</button></td></tr>`).join('')}</tbody></table></div></section>` : ''}`;
 }
 
 let confirmApagar = false;
@@ -874,8 +980,9 @@ const FORMS = {
     if (wiz.i < wiz.ids.length - 1) { wiz.i++; save(); render(); window.scrollTo(0, 0); return; }
     const primeira = !S.onboarded; S.onboarded = true; wiz = null; if (primeira) S.ui.tab = 'hoje'; save(); render(); window.scrollTo(0, 0); toast('Plano atualizado'); },
   pesoRapido: fd => { const p = num(fd.get('peso')); if (!p) return; const u = S.logs.corpo.find(x => x.data === hoje()); if (u) u.peso = p; else S.logs.corpo.push({ data: hoje(), peso: p }); save(); render(); toast('Peso salvo'); },
-  corpo: fd => { const e = { data: fd.get('data') || hoje() }; ['peso', 'cintura', 'pescoco', 'quadril', 'gordura'].forEach(k => { const v = num(fd.get(k)); if (v) e[k] = v; });
-    S.logs.corpo = S.logs.corpo.filter(x => x.data !== e.data).concat(e); save(); render(); toast('Medição salva'); },
+  corpo: fd => { const e = { data: fd.get('data') || hoje() }; ['peso', 'cintura', 'pescoco', 'quadril'].forEach(k => { const v = num(fd.get(k)); if (v) e[k] = v; });
+    lerBio(fd, e); if (e.gordura) S.perfil.gordura = e.gordura;
+    S.logs.corpo = S.logs.corpo.filter(x => x.data !== e.data).concat(e); save(); render(); toast(temBio(e) ? 'Bioimpedância salva, plano recalculado' : 'Medição salva'); },
   sessao: (fd, f) => { const id = f.dataset.id, tr = programa()[id], ex = {};
     tr.ex.forEach(e => { const sets = []; for (let i = 0; i < e.sets; i++) { const kg = num(fd.get(`kg-${e.id}-${i}`)), reps = num(fd.get(`rp-${e.id}-${i}`)); if (reps) sets.push({ kg: kg || 0, reps }); } if (sets.length) ex[e.id] = sets; });
     if (!Object.keys(ex).length) { toast('Preencha as repetições de pelo menos uma série'); return; }
