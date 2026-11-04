@@ -187,6 +187,7 @@ function merge(r) {
 }
 let S = load();
 let storageOk = true;
+try { navigator.storage && navigator.storage.persist && navigator.storage.persist(); } catch (e) {}
 function save() { try { localStorage.setItem(KEY, JSON.stringify(S)); storageOk = true; } catch (e) { storageOk = false; } }
 
 /* ---------------- Base de alimentos ----------------
@@ -936,6 +937,10 @@ function vWizard() {
   return `<section class="hero"><p class="eyebrow">Questionário · ${st.sec} · ${wiz.i + 1} de ${wiz.ids.length}</p>
     <div class="steps">${wiz.ids.map((_, i) => `<i class="${i <= wiz.i ? 'on' : ''}"></i>`).join('')}</div>
     <h1>${st.titulo}</h1><p class="muted">${st.intro}</p></section>
+    ${!S.onboarded && wiz.i === 0 ? `<details class="panel"><summary>Já usei o app em outro aparelho ou navegador</summary>
+      <form class="stack" data-form="importar" style="margin-top:10px"><p class="small muted">Lá, vá em Ajustes e use "Baixar backup" ou "Copiar dados". Aqui, escolha o arquivo ou cole o conteúdo.</p>
+      <input type="file" id="f-impfile" accept="application/json,.json" aria-label="Arquivo de backup">
+      <label class="f" for="f-imp">Ou cole os dados<textarea id="f-imp" name="json"></textarea></label><div><button class="btn" type="submit">Restaurar meus dados</button></div></form></details>` : ''}
     <form class="panel stack" data-form="wiz">${st.html(data)}
     <div class="row between">${wiz.i > 0 ? '<button type="button" class="btn ghost" data-act="wizBack">Voltar</button>' : (S.onboarded ? '<button type="button" class="btn ghost" data-act="wizCancel">Cancelar</button>' : '<span></span>')}
     <button class="btn" type="submit">${ult ? 'Concluir' : 'Próximo'}</button></div></form>`;
@@ -952,6 +957,7 @@ function vHoje() {
     <h1>${p.nome ? `Olá, ${esc(p.nome)}.` : 'Seu dia'}</h1>
     <div class="row"><span class="chip acc">${OBJ[pl.obj]}</span><span class="chip num">${n0(pl.kcal)} kcal</span><span class="chip num">${pl.prot} g proteína</span></div>
     <p class="small muted">${ultimoBio() ? `Gordura ${n1(pl.bf)}% · massa magra ${n1(pl.mm)} kg · bioimpedância de ${fmtData(ultimoBio().data)}` : `Gordura estimada em ${n1(pl.bf)}%. Lance sua bioimpedância em Progresso para mais precisão.`}</p></section>
+  ${S.onboarded && (!S.ui.ultimoBackup || diasEntre(S.ui.ultimoBackup, hoje()) >= 7) ? `<div class="note small">${S.ui.ultimoBackup ? `Último backup em ${fmtData(S.ui.ultimoBackup)}.` : 'Você ainda não fez backup.'} Os dados ficam só neste aparelho e neste navegador. <button class="linkbtn" data-act="exportar">Baixar backup</button> · <button class="linkbtn" data-act="tab" data-tab="ajustes">copiar dados</button></div>` : ''}
   ${!storageOk ? '<div class="note bad">O navegador está bloqueando o salvamento. Abra o app pelo endereço publicado ou faça backup manual em Ajustes.</div>' : ''}
   <section class="panel"><div class="row between"><h2>Treino de hoje</h2>${fezHoje ? '<span class="chip ok">feito</span>' : ''}</div>
     ${tr ? `<p><b>Treino ${td}</b> · ${tr.nome} · <span class="muted">${tr.ex.length} exercícios</span></p><div><button class="btn" data-act="abrirTreino" data-id="${td}">Abrir treino ${td}</button></div>` : '<p class="muted">Dia de descanso. Recuperação e sono fazem parte do treino: é no repouso que a síntese de proteína muscular acontece.</p>'}</section>
@@ -1200,8 +1206,8 @@ const ACTIONS = {
   rmReintro: b => { S.logs.reintro.splice(+b.dataset.i, 1); save(); render(); },
   ajuste: b => { S.perfil.ajusteKcal = (+S.perfil.ajusteKcal || 0) + (+b.dataset.d); S.perfil.ultimoAjuste = hoje(); save(); render(); toast('Calorias ajustadas'); },
   ajusteZero: () => { S.perfil.ajusteKcal = 0; S.perfil.ultimoAjuste = null; save(); render(); },
-  exportar: () => { try { const blob = new Blob([JSON.stringify(S, null, 1)], { type: 'application/json' }); const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `evolucao-backup-${hoje()}.json`; document.body.appendChild(a); a.click(); a.remove(); toast('Backup gerado'); } catch (e) { toast('Não foi possível baixar. Use "Copiar dados".'); } },
-  copiar: () => { const txt = JSON.stringify(S); const ta = document.getElementById('f-imp');
+  exportar: () => { try { const blob = new Blob([JSON.stringify(S, null, 1)], { type: 'application/json' }); const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `evolucao-backup-${hoje()}.json`; document.body.appendChild(a); a.click(); a.remove(); S.ui.ultimoBackup = hoje(); save(); toast('Backup gerado'); } catch (e) { toast('Não foi possível baixar. Use "Copiar dados".'); } },
+  copiar: () => { S.ui.ultimoBackup = hoje(); save(); const txt = JSON.stringify(S); const ta = document.getElementById('f-imp');
     navigator.clipboard?.writeText(txt).then(() => toast('Dados copiados. Cole num bloco de notas.'), () => { ta.value = txt; ta.select(); toast('Selecionei os dados na caixa abaixo: copie manualmente.'); }) ?? (ta.value = txt, ta.select()); },
   apagar: () => { if (!confirmApagar) { confirmApagar = true; render(); return; } try { localStorage.removeItem(KEY); } catch (e) {} S = JSON.parse(JSON.stringify(DEFAULT)); confirmApagar = false; wiz = null; render(); },
 };
