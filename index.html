@@ -253,6 +253,18 @@ const FOODS = [
   F('maca','Maçã','fruta',150,'g',78,0.4,21,0.3,'a','frutose',0,'vg','m'),
   F('manga','Manga','fruta',120,'g',72,1,18,0.5,'a','frutose',0,'vg','m'),
   F('melancia','Melancia','fruta',150,'g',45,0.9,11,0.2,'a','frutose',0,'vg','m'),
+  F('bife','Bife de alcatra','prot',100,'g',190,29,0,8,'b','',0,'o','a'),
+  F('mussarelasl','Muçarela sem lactose','prot',30,'g',90,6.6,0.9,6.8,'b','',0,'v','ma'),
+  F('cremesl','Creme de leite sem lactose','gord',30,'g',60,0.7,1.4,6,'b','',0,'v','a'),
+  F('manteiga','Manteiga','gord',10,'g',72,0.1,0,8.1,'b','',0.1,'v','m',0,'quase sem lactose'),
+  F('leiteamendoa','Bebida de amêndoas sem açúcar','prot',200,'ml',30,1,1,2.5,'b','',0,'vg','m'),
+  F('arrozint','Arroz integral','carb',100,'g',124,2.6,26,1,'b','',0,'vg','a'),
+  F('mandioca','Mandioca cozida','carb',100,'g',125,0.6,30,0.3,'b','',0,'vg','a'),
+  F('paosg','Pão sem glúten','carb',50,'g',130,2,24,3,'b','',0,'vg','m'),
+  F('abobora','Abóbora cabotiá','veg',75,'g',30,0.8,7,0.1,'b','',0,'vg','a'),
+  F('vagem','Vagem','veg',75,'g',23,1.4,5,0.2,'b','',0,'vg','a',75),
+  F('chuchu','Chuchu','veg',75,'g',13,0.6,3,0.1,'b','',0,'vg','a'),
+  F('cebolinha','Cebolinha (só a parte verde)','veg',10,'g',3,0.2,0.4,0,'b','',0,'vg','a'),
 ];
 const FOODMAP = Object.fromEntries(FOODS.map(f => [f.id, f]));
 const CATNOME = { prot: 'Proteínas', carb: 'Carboidratos', gord: 'Gorduras', veg: 'Legumes e verduras', fruta: 'Frutas' };
@@ -368,7 +380,7 @@ function plano() {
   if (p.dieta === 'vegana') protKg = Math.min(2.4, protKg + 0.2);
   const baseProt = bf > (p.sexo === 'f' ? 35 : 28) ? mm / 0.8 : peso; // em gordura alta, usa peso ajustado
   const prot = Math.round(protKg * baseProt);
-  let fat = Math.round(kcal * 0.25 / 9);
+  let fat = Math.round(kcal * ({ bulk: 0.3, cut: 0.25 }[obj] || 0.27) / 9);
   let carb = Math.round((kcal - prot * 4 - fat * 9) / 4);
   if (carb < 100) { fat = Math.round(kcal * 0.2 / 9); carb = Math.round((kcal - prot * 4 - fat * 9) / 4); }
   return { peso, bf, metodo, tmb, tmbFonte, mm, get, obj, motivo, kcal, prot, fat, carb: Math.max(carb, 50), protKg, fator, ajuste, baseProt };
@@ -424,45 +436,186 @@ function alimentosPermitidos() {
 const SLOTS = { 3: ['cafe', 'almoco', 'jantar'], 4: ['cafe', 'almoco', 'lanche', 'jantar'], 5: ['cafe', 'lanche1', 'almoco', 'lanche2', 'jantar'], 6: ['cafe', 'lanche1', 'almoco', 'lanche2', 'jantar', 'ceia'] };
 const SLOTNOME = { cafe: 'Café da manhã', lanche1: 'Lanche da manhã', almoco: 'Almoço', lanche: 'Lanche da tarde', lanche2: 'Lanche da tarde', jantar: 'Jantar', ceia: 'Ceia' };
 function porcao(f, q) {
-  const r = f.por >= 50 ? 10 : 5;
-  q = Math.max(r, Math.round(q / r) * r);
+  const m = typeof MEDIDA !== 'undefined' && MEDIDA[f.id];
+  if (m && m[3]) q = Math.max(1, Math.round(q / m[0])) * m[0];
+  else { const r = f.por >= 50 ? 10 : 5; q = Math.max(r, Math.round(q / r) * r); }
   if (f.max) q = Math.min(q, f.max);
   const k = q / f.por;
   return { f, q, kcal: f.kcal * k, p: f.p * k, c: f.c * k, fat: f.fat * k, lac: f.lac * k };
 }
 function tot(itens) { return itens.reduce((a, i) => ({ kcal: a.kcal + i.kcal, p: a.p + i.p, c: a.c + i.c, fat: a.fat + i.fat, lac: a.lac + i.lac }), { kcal: 0, p: 0, c: 0, fat: 0, lac: 0 }); }
+/* Livro de refeições. Cada item: 'alt1|alt2' (alternativas em ordem de preferência), porção base
+   (0 = porção de referência do alimento) e papel: p = ajusta para a meta de proteína, c = de carboidrato,
+   f = de gordura, x = quantidade fixa. '?' no início = item opcional (some se não for permitido).
+   No nome, {p} e {c} viram o alimento escolhido. Tipos: c café, l lanche, a almoço, j jantar, n ceia.
+   Para criar uma refeição, copie uma linha parecida. */
+const M = (id, nome, tipos, itens) => ({ id, nome, tipos, itens });
+const MEALS = [
+  M('c-ovos-pao', 'Ovos mexidos com {c} e fruta', 'c', [['ovos', 100, 'p'], ['paoferm|paosg', 60, 'c'], ['?manteiga|azeite', 5, 'f'], ['?mamao|morango|kiwi|laranja|banana', 0, 'x']]),
+  M('c-crepioca', 'Crepioca com muçarela e café com leite', 'c', [['ovos', 100, 'p'], ['tapioca', 30, 'c'], ['?mussarelasl', 20, 'f'], ['?leitesl|leiteamendoa', 150, 'x']]),
+  M('c-mingau', 'Mingau de aveia com banana e pasta de amendoim', 'c', [['leitesl|leiteamendoa', 200, 'x'], ['?wheyiso', 25, 'p'], ['aveia', 40, 'c'], ['banana', 0, 'x'], ['pamend|chia', 15, 'f']]),
+  M('c-iogurte', 'Iogurte com morango, aveia e chia', 'cn', [['iogsl', 170, 'x'], ['?wheyiso', 20, 'p'], ['aveia', 30, 'c'], ['?morango|kiwi|banana', 0, 'x'], ['chia', 12, 'f']]),
+  M('c-cuscuz', 'Cuscuz com ovos e tomate', 'cj', [['cuscuz', 100, 'c'], ['ovos', 100, 'p'], ['?tomate', 0, 'x'], ['?manteiga|azeite', 5, 'f']]),
+  M('c-panqueca', 'Panqueca de banana e aveia', 'cl', [['ovos', 100, 'p'], ['banana', 0, 'x'], ['aveia', 30, 'c'], ['?pamend|chia', 10, 'f']]),
+  M('c-tapioca', 'Tapioca de {p} com muçarela', 'cl', [['tapioca', 40, 'c'], ['frango|atum|ovos', 60, 'p'], ['?mussarelasl', 20, 'f'], ['?tomate', 40, 'x']]),
+  M('c-tofu', 'Tofu mexido com {c} e fruta', 'cj', [['tofu', 120, 'p'], ['paoferm|paosg', 60, 'c'], ['?espinafre', 40, 'x'], ['?azeite', 5, 'f'], ['?mamao|morango|kiwi|laranja', 0, 'x']]),
+  M('l-shake', 'Shake de whey com banana e aveia', 'l', [['wheyiso', 30, 'p'], ['leitesl|leiteamendoa', 200, 'x'], ['banana', 0, 'x'], ['?aveia', 20, 'c'], ['?pamend', 10, 'f']]),
+  M('l-iogurte', 'Iogurte com fruta e castanha-do-pará', 'ln', [['iogsl', 170, 'x'], ['?wheyiso', 20, 'p'], ['morango|kiwi|mamao|banana', 0, 'c'], ['castpara', 10, 'f']]),
+  M('l-ovos-fruta', 'Ovos cozidos e fruta', 'l', [['ovos', 100, 'p'], ['banana|laranja|kiwi|mamao|uva', 0, 'c']]),
+  M('l-sanduiche', 'Sanduíche de {p} com tomate', 'l', [['paoferm|paosg', 60, 'c'], ['atum|frango|ovos', 60, 'p'], ['?tomate', 40, 'x'], ['?alface', 15, 'x'], ['?azeite', 3, 'f']]),
+  M('l-pao-pasta', 'Pão com pasta de amendoim e banana', 'l', [['paoferm|paosg', 30, 'c'], ['pamend', 15, 'f'], ['banana', 50, 'x'], ['?wheyiso', 25, 'p'], ['?leitesl|leiteamendoa', 200, 'x']]),
+  M('l-fruta-castanha', 'Fruta com amendoim e castanhas', 'l', [['banana|laranja|kiwi|mamao|uva', 0, 'c'], ['amendoim', 20, 'f'], ['?castpara', 5, 'x']]),
+  M('l-tofu-pao', 'Torrada com tofu temperado e tomate', 'l', [['paoferm|paosg', 30, 'c'], ['tofu', 80, 'p'], ['?tomate', 40, 'x'], ['?azeite', 3, 'f']]),
+  M('l-tapioca-ovo', 'Tapioca com ovo', 'l', [['tapioca', 30, 'c'], ['ovos', 50, 'p'], ['?mussarelasl', 15, 'f']]),
+  M('a-prato', '{c}, {p} e salada', 'aj', [['arroz|arrozint|quinoa', 120, 'c'], ['frango|bife|tilapia|tofu', 120, 'p'], ['?alface', 30, 'x'], ['?tomate|pepino', 0, 'x'], ['azeite', 8, 'f']]),
+  M('a-pf', 'Arroz, feijão, {p} e salada', 'a', [['arroz|arrozint', 100, 'c'], ['feijao', 80, 'x'], ['bife|frango|patinho', 120, 'p'], ['?alface', 30, 'x'], ['?tomate', 0, 'x'], ['?azeite', 5, 'f']]),
+  M('a-carne-moida', 'Arroz com carne moída, abobrinha e cenoura', 'aj', [['arroz|arrozint', 120, 'c'], ['patinho', 120, 'p'], ['abobrinha|chuchu', 0, 'x'], ['?cenoura', 0, 'x'], ['?cebolinha', 10, 'x']]),
+  M('a-pure', '{p} com purê de {c} e {x}', 'aj', [['batata|mandioca|abobora', 150, 'c'], ['tilapia|frango|salmao', 130, 'p'], ['brocolis|vagem|abobrinha', 0, 'x'], ['?leitesl', 40, 'x'], ['?manteiga|azeite', 5, 'f']]),
+  M('a-salmao', 'Salmão com {c} e legumes assados', 'aj', [['quinoa|arroz', 120, 'c'], ['salmao', 120, 'p'], ['abobora|abobrinha|pimentao', 0, 'x'], ['?cenoura', 0, 'x'], ['?azeite', 5, 'f']]),
+  M('a-bolonhesa', 'Macarrão à bolonhesa', 'aj', [['macarroz|macarrao', 120, 'c'], ['patinho', 110, 'p'], ['tomate', 100, 'x'], ['?parmesao', 10, 'f'], ['?cebolinha', 5, 'x']]),
+  M('a-escondidinho', 'Escondidinho de {c} com carne moída', 'aj', [['mandioca|batata', 150, 'c'], ['patinho', 110, 'p'], ['?mussarelasl', 20, 'f'], ['?cebolinha', 5, 'x'], ['?alface', 30, 'x']]),
+  M('a-strogonoff', 'Strogonoff de frango com arroz', 'aj', [['arroz', 120, 'c'], ['frango', 120, 'p'], ['cremesl', 30, 'f'], ['tomate', 50, 'x'], ['?vagem|brocolis', 0, 'x']]),
+  M('a-batata-frango', '{p} com {c} e legumes', 'aj', [['batata|batatadoce|mandioca', 150, 'c'], ['frango|bife|tilapia', 120, 'p'], ['cenoura|vagem|abobrinha', 0, 'x'], ['?azeite', 5, 'f']]),
+  M('a-tofu', 'Tofu salteado com {c} e legumes', 'aj', [['arroz|quinoa|macarroz', 120, 'c'], ['tofu|tempeh', 130, 'p'], ['brocolis|pimentao|abobrinha', 0, 'x'], ['?cenoura', 0, 'x'], ['?azeite', 5, 'f']]),
+  M('a-lentilha', 'Arroz, lentilha e legumes', 'aj', [['arroz|arrozint', 100, 'c'], ['lentilha', 100, 'p'], ['?tofu|ovos', 60, 'p'], ['abobrinha|cenoura|abobora', 0, 'x'], ['?azeite', 5, 'f']]),
+  M('j-omelete', 'Omelete de espinafre e tomate com {c}', 'j', [['ovos', 150, 'p'], ['?claras', 66, 'p'], ['espinafre', 40, 'x'], ['?tomate', 40, 'x'], ['batata|batatadoce|mandioca|paoferm', 100, 'c'], ['?mussarelasl', 15, 'f']]),
+  M('j-wrap', 'Crepioca recheada com {p} e salada', 'j', [['ovos', 100, 'x'], ['tapioca', 40, 'c'], ['frango|atum', 80, 'p'], ['?alface', 20, 'x'], ['?tomate', 40, 'x'], ['?mussarelasl', 15, 'f']]),
+  M('n-leite-whey', 'Copo de leite com whey', 'n', [['leitesl|leiteamendoa', 200, 'x'], ['wheyiso', 25, 'p']]),
+  M('n-ovos', 'Ovos mexidos com tomate', 'n', [['ovos', 100, 'p'], ['?tomate', 40, 'x']]),
+  M('n-queijo', 'Muçarela com castanhas', 'n', [['mussarelasl', 30, 'p'], ['castpara|amendoim', 10, 'f']]),
+];
+const MEALMAP = Object.fromEntries(MEALS.map(m => [m.id, m]));
+/* Porção máxima realista por refeição (g ou ml) */
+const TETO = { arroz: 250, arrozint: 250, quinoa: 220, batata: 300, batatadoce: 75, mandioca: 250, abobora: 200, macarroz: 250, macarrao: 250, cuscuz: 200,
+  paoferm: 90, paosg: 75, tapioca: 60, aveia: 60, ovos: 200, claras: 132, wheyiso: 40, pamend: 30, azeite: 13, manteiga: 10, iogsl: 340, atum: 120, frango: 200,
+  bife: 200, patinho: 180, tilapia: 220, salmao: 180, tofu: 200, tempeh: 160, mussarelasl: 40, castpara: 15, cremesl: 50, chia: 24, banana: 150, kiwi: 150, uva: 150, mamao: 200, laranja: 260, morango: 200 };
+const CURTO = { frango: 'frango grelhado', bife: 'bife', tilapia: 'tilápia', salmao: 'salmão', atum: 'atum', ovos: 'ovo', patinho: 'carne moída', tofu: 'tofu', tempeh: 'tempeh',
+  arroz: 'arroz', arrozint: 'arroz integral', quinoa: 'quinoa', batata: 'batata', batatadoce: 'batata-doce', mandioca: 'mandioca', abobora: 'abóbora', macarroz: 'macarrão de arroz',
+  paoferm: 'pão de fermentação natural', paosg: 'pão sem glúten', brocolis: 'brócolis', vagem: 'vagem', abobrinha: 'abobrinha' };
+const curto = f => CURTO[f.id] || f.n.toLowerCase();
+const TIPOSLOT = { cafe: 'c', lanche1: 'l', lanche: 'l', lanche2: 'l', almoco: 'a', jantar: 'j', ceia: 'n' };
+const PESOSLOT = { c: 1.0, l: 0.65, a: 1.35, j: 1.2, n: 0.5 };
+
+/* Monta uma refeição concreta: escolhe as alternativas permitidas e ajusta as porções às metas */
+function montarRefeicao(meal, alvo, seed) {
+  const ok = new Set(alimentosPermitidos().map(f => f.id)), dieta = S.perfil.dieta || 'onivora';
+  const escolha = {}, itens = [];
+  for (const [alts, base, papel] of meal.itens) {
+    const opcional = alts.startsWith('?');
+    let lista = alts.replace('?', '').split('|').filter(id => ok.has(id)).map(id => FOODMAP[id]);
+    if (dieta === 'onivora' && lista.some(f => f.d !== 'vg')) { const pref = lista.filter(f => f.d !== 'vg' || f.cat !== 'prot'); if (pref.length) lista = pref; }
+    if (!lista.length) { if (opcional) continue; return null; }
+    if (papel === 'p' && lista.length > 1 && plano().obj === 'cut') { const magras = lista.filter(f => f.fat / Math.max(f.p, 1) <= 0.35); if (magras.length) lista = magras; }
+    if (papel === 'c' && lista.length > 1) { const cabe = lista.filter(f => !f.max || f.max >= (base || f.por) * 1.2); if (cabe.length) lista = cabe; }
+    const f = (papel === 'p' || papel === 'c') ? lista[seed % lista.length] : lista[0];
+    if (!escolha[papel]) escolha[papel] = f;
+    itens.push({ f, base: base || f.por, papel, q: base || f.por });
+  }
+  const somar = () => itens.reduce((a, i) => { const k = i.q / i.f.por; a.p += i.f.p * k; a.c += i.f.c * k; a.fat += i.f.fat * k; return a; }, { p: 0, c: 0, fat: 0 });
+  const MAXMULT = { p: 2, c: 2.2, f: 2 }, CHAVE = { p: 'p', c: 'c', f: 'fat' };
+  for (let passada = 0; passada < 3; passada++) {
+    for (const papel of ['p', 'c', 'f']) {
+      const alvoItens = itens.filter(i => i.papel === papel); if (!alvoItens.length) continue;
+      const k = CHAVE[papel], atual = somar()[k], doPapel = alvoItens.reduce((a, i) => a + i.f[k] * i.q / i.f.por, 0);
+      if (doPapel <= 0) continue;
+      const fator = clamp((doPapel + alvo[k] - atual) / doPapel, 0.4, 3);
+      alvoItens.forEach(i => { i.q = clamp(i.q * fator, i.base * (papel === 'p' ? 0.8 : 0.5), Math.min(i.f.max || Infinity, TETO[i.f.id] || Infinity, i.base * MAXMULT[papel])); });
+    }
+  }
+  const prontos = itens.map(i => porcao(i.f, i.q));
+  let nome = meal.nome.replace('{p}', escolha.p ? curto(escolha.p) : '').replace('{c}', escolha.c ? curto(escolha.c) : '')
+    .replace('{x}', (itens.find(i => i.papel === 'x' && i.f.cat === 'veg') || {}).f ? curto(itens.find(i => i.papel === 'x' && i.f.cat === 'veg').f) : 'legumes');
+  nome = nome.charAt(0).toUpperCase() + nome.slice(1);
+  return { id: meal.id, prato: nome, itens: prontos, tot: tot(prontos) };
+}
+function refeicoesValidas(tipo) {
+  const off = new Set(S.perfil.mealsOff || []);
+  return MEALS.filter(m => m.tipos.includes(tipo) && !off.has(m.id));
+}
 function gerarDia(data) {
   const pl = plano(), n = clamp(+S.perfil.refeicoes || 4, 3, 6), slots = SLOTS[n];
-  const pesoC = slots.map(s => (s === 'almoco' || s === 'jantar') ? 1.4 : s === 'cafe' ? 1.1 : 0.8);
-  const somaC = pesoC.reduce((a, b) => a + b, 0);
-  const al = alimentosPermitidos();
-  return slots.map((s, i) => {
-    const tipo = (s === 'almoco' || s === 'jantar') ? 'a' : 'm';
-    const seed = hash(data + s) + (S.ui.swaps[data + s] || 0) * 7;
-    const alvo = { p: pl.prot / n, c: pl.carb * pesoC[i] / somaC, fat: pl.fat / n };
-    const pick = (cat, k) => {
-      let l = al.filter(f => f.cat === cat && f.t.includes(tipo));
-      if (!l.length) l = al.filter(f => f.cat === cat);
-      return l.length ? l[(seed + k) % l.length] : null;
-    };
-    const itens = [];
-    const lado = pick(tipo === 'a' ? 'veg' : 'fruta', 3);
-    if (lado) itens.push(porcao(lado, lado.por));
-    if (tipo === 'a') { const v2 = pick('veg', 11); if (v2 && v2 !== lado) itens.push(porcao(v2, v2.por)); }
-    const pr = pick('prot', 0);
-    if (pr) { const need = Math.max(alvo.p * 0.85 - tot(itens).p, alvo.p * 0.5); itens.push(porcao(pr, clamp(need / pr.p * pr.por, pr.por * 0.5, pr.max || pr.por * 2.5))); }
-    const cb = pick('carb', 5);
-    if (cb) { const need = alvo.c - tot(itens).c; if (need > 8) itens.push(porcao(cb, clamp(need / cb.c * cb.por, cb.por * 0.4, cb.max || cb.por * 3))); }
-    const ft = pick('gord', 2);
-    if (ft) { const need = alvo.fat - tot(itens).fat; if (need > 3) itens.push(porcao(ft, clamp(need / ft.fat * ft.por, ft.por * 0.5, ft.max || ft.por * 2.5))); }
-    return { slot: s, nome: SLOTNOME[s], itens, tot: tot(itens), alvo };
+  const pesos = slots.map(s => PESOSLOT[TIPOSLOT[s]]), soma = pesos.reduce((a, b) => a + b, 0);
+  const usados = new Set();
+  const dia = slots.map((s, i) => {
+    const tipo = TIPOSLOT[s], w = pesos[i] / soma;
+    const alvo = { p: pl.prot * w, c: pl.carb * w, fat: pl.fat * w };
+    const trocas = S.ui.swaps[data + s] || 0, seed = hash(data + s);
+    let lista = refeicoesValidas(tipo);
+    if (!lista.length) lista = MEALS.filter(m => m.tipos.includes(tipo));
+    let ref = null;
+    const magro = r => { const pr = r.itens.filter(i => i.f.cat === 'prot'); const g = pr.reduce((a, i) => a + i.fat, 0), pp = pr.reduce((a, i) => a + i.p, 0); return g / Math.max(pp, 1) <= 0.45; };
+    for (let passo = pl.obj === 'cut' ? 0 : 1; passo < 2 && !ref; passo++) for (let t = 0; t < lista.length && !ref; t++) {
+      const meal = lista[(seed + trocas + t) % lista.length];
+      if (usados.has(meal.id)) continue;
+      ref = montarRefeicao(meal, alvo, seed + trocas);
+      if (ref && passo === 0 && !magro(ref)) { ref = null; continue; }
+      if (ref) { ref.papeis = meal.itens.filter(([a]) => !a.startsWith('?') || ref.itens.some(i => a.replace('?', '').split('|').includes(i.f.id))).map(x => x[2]); ref.meal = meal; }
+    }
+    if (!ref) return { slot: s, nome: SLOTNOME[s], prato: 'Sem opção com seus filtros', itens: [], tot: tot([]), alvo, vazio: true };
+    usados.add(ref.id);
+    return { slot: s, nome: SLOTNOME[s], tipo, ...ref, alvo };
   });
+  completar(dia, pl, data);
+  enxugar(dia, pl);
+  return dia;
 }
+/* Se o dia passou mais de 7% da meta, reduz carboidrato e gordura dos pratos (nunca a proteína) */
+function enxugar(dia, pl) {
+  const total = () => dia.reduce((a, x) => a + x.tot.kcal, 0);
+  if (total() <= pl.kcal * 1.07) return;
+  for (let k = 0; k < 6 && total() > pl.kcal * 1.04; k++) {
+    const excesso = total() - pl.kcal;
+    const redutiveis = dia.flatMap(m => m.itens.filter(i => !i.comp && (i.f.cat === 'carb' || i.f.cat === 'gord' || (i.f.cat === 'fruta' && i.q > i.f.por))).map(i => ({ m, i })));
+    const kcalRed = redutiveis.reduce((a, r) => a + r.i.kcal, 0); if (kcalRed < 50) return;
+    const fator = clamp(1 - excesso / kcalRed, 0.5, 0.95);
+    for (const { m, i } of redutiveis) Object.assign(i, porcao(i.f, Math.max(i.q * fator, i.f.por * 0.4)), { comp: i.comp });
+    dia.forEach(m => m.tot = tot(m.itens));
+  }
+}
+/* Se o dia ficou abaixo da meta de calorias, acrescenta complementos simples
+   (fruta de sobremesa, fatia de pão, castanhas) em vez de inflar as porções */
+function completar(dia, pl, data) {
+  const ok = new Set(alimentosPermitidos().map(f => f.id));
+  const frutas = ['banana', 'mamao', 'laranja', 'kiwi', 'uva', 'morango'].filter(id => ok.has(id));
+  const opcoes = { a: frutas.map(id => [id, 0, 'de sobremesa']), j: frutas.map(id => [id, 0, 'de sobremesa']),
+    c: [['paoferm', 30, ''], ['paosg', 25, ''], ...frutas.map(id => [id, 0, ''])], l: [...frutas.map(id => [id, 0, '']), ['castpara', 10, ''], ['amendoim', 20, '']],
+    n: [['castpara', 10, ''], ...frutas.map(id => [id, 0, ''])] };
+  const ordem = ['l', 'c', 'a', 'j', 'n'];
+  for (let volta = 0; volta < 2; volta++) for (const t of ordem) for (const m of dia.filter(x => x.tipo === t && !x.vazio)) {
+    const falta = pl.kcal - dia.reduce((a, x) => a + x.tot.kcal, 0);
+    if (falta < 120) return;
+    const usadosNoPrato = new Set(m.itens.map(i => i.f.id));
+    const temFruta = m.itens.some(i => i.f.cat === 'fruta');
+    const cand = (opcoes[t] || []).filter(([id]) => ok.has(id) && !usadosNoPrato.has(id) && !(temFruta && FOODMAP[id].cat === 'fruta'));
+    if (!cand.length) continue;
+    const [id, q, rot] = cand[(hash(data + m.slot) + volta) % cand.length], f = FOODMAP[id];
+    const it = porcao(f, q || f.por); it.comp = rot || 'complemento';
+    m.itens.push(it); m.tot = tot(m.itens);
+  }
+}
+/* Medidas caseiras: [gramas por unidade, singular, plural, só unidades inteiras] */
+const MEDIDA = {
+  arroz: [25, 'colher de sopa', 'colheres de sopa'], arrozint: [25, 'colher de sopa', 'colheres de sopa'], quinoa: [25, 'colher de sopa', 'colheres de sopa'],
+  feijao: [80, 'concha', 'conchas'], lentilha: [80, 'concha', 'conchas'],
+  ovos: [50, 'ovo', 'ovos', 1], claras: [33, 'clara', 'claras', 1], paoferm: [30, 'fatia', 'fatias', 1], paosg: [25, 'fatia', 'fatias', 1],
+  tapioca: [13, 'colher de sopa de goma', 'colheres de sopa de goma'], aveia: [10, 'colher de sopa', 'colheres de sopa'], chia: [12, 'colher de sopa', 'colheres de sopa'],
+  pamend: [15, 'colher de sopa', 'colheres de sopa'], azeite: [8, 'colher de sopa', 'colheres de sopa'], manteiga: [5, 'colher de chá', 'colheres de chá'],
+  cremesl: [15, 'colher de sopa', 'colheres de sopa'], wheyiso: [30, 'scoop', 'scoops'], wheycon: [30, 'scoop', 'scoops'],
+  banana: [100, 'banana', 'bananas'], laranja: [130, 'laranja', 'laranjas'], kiwi: [75, 'kiwi', 'kiwis'], tomate: [100, 'tomate', 'tomates'],
+  iogsl: [170, 'pote', 'potes'], leitesl: [200, 'copo', 'copos'], leiteamendoa: [200, 'copo', 'copos'], castpara: [5, 'castanha', 'castanhas', 1],
+  mussarelasl: [20, 'fatia', 'fatias', 1], parmesao: [5, 'colher de sopa ralado', 'colheres de sopa ralado'], atum: [120, 'lata', 'latas'],
+  batata: [100, 'batata média', 'batatas médias'], mandioca: [50, 'pedaço', 'pedaços'],
+};
+const fracao = v => { const r = Math.round(v * 2) / 2, i = Math.floor(r); return r < 0.5 ? '½' : (i ? String(i) : '') + (r % 1 ? '½' : ''); };
 function qtd(f, q) {
-  if (f.id === 'ovos') return `${Math.max(1, Math.round(q / 50))} un (${q} g)`;
-  if (f.id === 'claras') return `${Math.max(1, Math.round(q / 33))} claras`;
-  if (f.id.startsWith('whey')) return `${q} g (${n1(q / 30)} dose)`;
-  return `${q} ${f.u}`;
+  const m = MEDIDA[f.id];
+  if (!m) return `${q} ${f.u}`;
+  const u = q / m[0];
+  if (!m[3] && u < 0.4) return `${q} ${f.u}`;
+  const v = m[3] ? Math.max(1, Math.round(u)) : u, txt = m[3] ? String(v) : fracao(v);
+  const plural = m[3] ? v > 1 : v > 1.25;
+  if (m[3] && (f.id === 'ovos' || f.id === 'claras' || f.id === 'castpara')) return `${txt} ${plural ? m[2] : m[1]}`;
+  return `${q} ${f.u} · ${txt} ${plural ? m[2] : m[1]}`;
 }
 
 /* ---------------- Programa de treino ----------------
@@ -834,10 +987,11 @@ function vDieta() {
       <li>Proteína: ${n1(pl.protKg)} g por kg${Math.round(pl.baseProt) !== Math.round(pl.peso) ? ' de peso ajustado' : ''} (faixa de 1,6 a 2,2 g/kg para ganho de massa magra${p.dieta === 'vegana' ? '; dietas só vegetais pedem um pouco mais, até 2,4 g/kg' : ''}).</li>
       <li>Gordura entre 20% e 35% das calorias, para preservar a produção hormonal. O resto vem de carboidrato.</li></ul></details></section>
   <section class="panel"><div class="row between"><h2>Cardápio de hoje</h2><span class="tag">${al.length} alimentos liberados</span></div>
-    <p class="small muted">Monta-se sozinho com os alimentos liberados na sua fase. Toque em "trocar" para outra opção da mesma refeição.</p>
-    <div class="stack">${dia.map(m => `<div class="meal"><div class="row between"><h3>${m.nome}</h3><button class="linkbtn" data-act="swap" data-slot="${m.slot}">trocar</button></div>
-      ${m.itens.map(i => `<div class="item"><span>${esc(i.f.n)}${i.f.nota ? ` <span class="muted small">· ${esc(i.f.nota)}</span>` : ''}</span><span class="q">${qtd(i.f, i.q)}</span></div>`).join('')}
+    <p class="small muted">Pratos montados só com o que é liberado na sua fase, com as porções ajustadas às suas metas. "Trocar" mostra outro prato; "não gosto" tira o prato do rodízio.</p>
+    <div class="stack">${dia.map(m => `<div class="meal"><div class="row between"><span class="eyebrow">${m.nome}</span><span class="row"><button class="linkbtn" data-act="swap" data-slot="${m.slot}">trocar</button>${m.id ? `<button class="linkbtn" style="color:var(--muted)" data-act="mealOff" data-id="${m.id}" data-slot="${m.slot}">não gosto</button>` : ''}</span></div><h3>${esc(m.prato)}</h3>
+      ${m.itens.map(i => `<div class="item"><span>${i.comp ? `<span class="muted">+</span> ` : ''}${esc(i.f.n)}${i.comp ? ` <span class="muted small">· ${i.comp}</span>` : ''}${i.f.nota ? ` <span class="muted small">· ${esc(i.f.nota)}</span>` : ''}</span><span class="q">${qtd(i.f, i.q)}</span></div>`).join('')}
       <p class="small muted num">${n0(m.tot.kcal)} kcal · P ${n0(m.tot.p)} · C ${n0(m.tot.c)} · G ${n0(m.tot.fat)}</p></div>`).join('')}</div>
+    ${(p.mealsOff || []).length ? `<p class="small muted">${p.mealsOff.length} ${p.mealsOff.length > 1 ? 'pratos ocultos' : 'prato oculto'}: ${p.mealsOff.map(id => MEALMAP[id] ? esc(MEALMAP[id].nome.replace(/\{[pcx]\}/g, '…')) : '').join(', ')}. <button class="linkbtn" data-act="mealsReset">mostrar de novo</button></p>` : ''}
     <div class="note info small num">Total do dia: ${n0(T.kcal)} kcal · P ${n0(T.p)} g · C ${n0(T.c)} g · G ${n0(T.fat)} g${T.lac > 0.05 ? ` · lactose ${n1(T.lac)} g` : ''}</div></section>
   <section class="panel"><h2>${fi.titulo}</h2><p>${fi.texto}</p>${fi.dias && fi.fase !== 'nenhuma' ? `<p class="small muted">Dia ${fi.dias} desta fase.</p>` : ''}
     ${fi.alerta ? `<div class="note ${fi.alerta.t}">${fi.alerta.m}</div>` : ''}
@@ -1029,6 +1183,8 @@ const ACTIONS = {
   refazer: b => startWizard(b.dataset.s ? b.dataset.s.split(',') : null),
   abrirTreino: b => { S.ui.treinoSel = b.dataset.id; S.ui.tab = 'treino'; save(); render(); window.scrollTo(0, 0); },
   treinoSel: b => { S.ui.treinoSel = b.dataset.id; save(); render(); },
+  mealOff: b => { S.perfil.mealsOff = [...new Set([...(S.perfil.mealsOff || []), b.dataset.id])]; save(); render(); toast('Prato tirado do rodízio'); },
+  mealsReset: () => { S.perfil.mealsOff = []; save(); render(); },
   swap: b => { const k = hoje() + b.dataset.slot; S.ui.swaps[k] = (S.ui.swaps[k] || 0) + 1; save(); render(); },
   lac: b => { const v = +b.dataset.v; S.logs.lactose[hoje()] = v === 0 ? 0 : (S.logs.lactose[hoje()] || 0) + v; save(); render(); },
   timer: b => iniciarTimer(+b.dataset.s),
