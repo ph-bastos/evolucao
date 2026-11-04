@@ -563,7 +563,7 @@ function sugestao(ex) {
 /* ---------------- Finanças ---------------- */
 const CATS = [
   ['moradia', 'Moradia', 'ess'], ['contas', 'Contas da casa', 'ess'], ['mercado', 'Mercado', 'ess'], ['transporte', 'Transporte', 'ess'], ['saude', 'Saúde', 'ess'], ['educacao', 'Educação', 'ess'],
-  ['delivery', 'Delivery e restaurantes', 'des'], ['lazer', 'Lazer', 'des'], ['compras', 'Compras', 'des'], ['assinaturas', 'Assinaturas', 'des'], ['suplementos', 'Suplementos', 'des'], ['outros', 'Outros', 'des'],
+  ['delivery', 'Delivery e restaurantes', 'des'], ['lazer', 'Lazer', 'des'], ['compras', 'Compras', 'des'], ['assinaturas', 'Assinaturas', 'des'], ['suplementos', 'Suplementos', 'des'], ['outros', 'Outros', 'des'], ['cartaoini', 'Cartão sem categoria', 'des'],
   ['reserva', 'Reserva de emergência', 'fut'], ['invest', 'Investimentos e metas', 'fut'], ['dividas', 'Pagamento de dívidas', 'fut'],
 ];
 const CATMAP = Object.fromEntries(CATS.map(([id, n, g]) => [id, { n, g }]));
@@ -575,21 +575,61 @@ const METODOS = {
 };
 const FIXOS = [['aluguel', 'Moradia (aluguel/condomínio)', 'moradia'], ['contas', 'Contas (luz, água, internet, celular)', 'contas'], ['transporte', 'Transporte fixo', 'transporte'], ['saude', 'Plano de saúde', 'saude'], ['educacao', 'Educação', 'educacao'], ['assinaturas', 'Assinaturas (streaming, apps, academia)', 'assinaturas']];
 
+/* ---------- Cartões e faturas ----------
+   Cada lançamento guarda a data da COMPRA. O mês em que ele pesa no orçamento
+   é o mês em que o dinheiro sai da conta:
+   - conta, Pix, débito ou dinheiro: o próprio mês da compra;
+   - cartão: o mês de vencimento da fatura em que a compra cai.
+   Compra a partir do dia de fechamento vai para a fatura seguinte.
+   Parcelado: cada parcela cai numa fatura, uma por mês. */
+const cartoes = () => (S.fin.cartoes || []).filter(c => c.nome && c.fecha && c.vence);
+const cartaoPor = id => cartoes().find(c => c.id === id);
+const diaVenc = (m, d) => { const [y, mm] = m.split('-').map(Number); const ult = new Date(y, mm, 0).getDate(); return `${m}-${String(Math.min(d, ult)).padStart(2, '0')}`; };
+function mesFatura(dataCompra, c) {
+  const dia = +dataCompra.slice(8, 10);
+  let mFecha = dataCompra.slice(0, 7);
+  if (dia >= +c.fecha) mFecha = addMes(mFecha, 1);
+  return +c.vence > +c.fecha ? mFecha : addMes(mFecha, 1);
+}
+/* Mês da fatura que está aberta hoje (recebendo compras) */
+const faturaAberta = c => mesFatura(hoje(), c);
+const fechamentoDe = (mVenc, c) => diaVenc(+c.vence > +c.fecha ? mVenc : addMes(mVenc, -1), +c.fecha);
+function ocorrencias() {
+  const out = [];
+  for (const g of S.logs.gastos) {
+    const c = g.pg && g.pg !== 'conta' ? cartaoPor(g.pg) : null;
+    const n = c ? clamp(+g.parc || 1, 1, 48) : 1;
+    const m0 = c ? mesFatura(g.data, c) : g.data.slice(0, 7);
+    for (let i = 0; i < n; i++) {
+      const mes = addMes(m0, i);
+      out.push({ ...g, mes, valor: Math.round(g.valor / n * 100) / 100, total: g.valor, parcela: n > 1 ? `${i + 1}/${n}` : '', cartao: c, venc: c ? diaVenc(mes, +c.vence) : g.data });
+    }
+  }
+  return out;
+}
 function resumoMes(m) {
   const f = S.fin, renda = +f.renda || 0, met = METODOS[f.metodo] || METODOS['50/30/20'];
-  const g = S.logs.gastos.filter(x => x.data.startsWith(m));
+  const g = ocorrencias().filter(x => x.mes === m);
   const por = {}, grp = { ess: 0, des: 0, fut: 0 };
   for (const x of g) { por[x.cat] = (por[x.cat] || 0) + x.valor; grp[(CATMAP[x.cat] || CATMAP.outros).g] += x.valor; }
   const orc = { ess: renda * met.ess / 100, des: renda * met.des / 100, fut: renda * met.fut / 100 };
-  return { renda, met, g, por, grp, orc, consumo: grp.ess + grp.des, livre: renda - grp.ess - grp.des - grp.fut };
+  const cartao = g.filter(x => x.cartao).reduce((a, x) => a + x.valor, 0);
+  return { renda, met, g, por, grp, orc, cartao, consumo: grp.ess + grp.des, livre: renda - grp.ess - grp.des - grp.fut };
 }
 function fixosTotal() { const fx = S.fin.fixos || {}; return Object.values(fx).reduce((a, b) => a + (+b || 0), 0); }
 function reserva() {
-  const meses = [...new Set(S.logs.gastos.map(x => x.data.slice(0, 7)))];
+  const oc = ocorrencias(), meses = [...new Set(oc.map(x => x.mes))].filter(m => m <= mesAtual());
   const essMed = meses.length ? meses.map(m => resumoMes(m).grp.ess).reduce((a, b) => a + b, 0) / meses.length : 0;
   const base = Math.max(essMed, fixosTotal());
-  const atual = (+S.fin.reservaAtual || 0) + S.logs.gastos.filter(x => x.cat === 'reserva').reduce((a, x) => a + x.valor, 0);
+  const atual = (+S.fin.reservaAtual || 0) + oc.filter(x => x.cat === 'reserva' && x.mes <= mesAtual()).reduce((a, x) => a + x.valor, 0);
   return { alvo: base * 6, atual, base };
+}
+/* Texto que diz onde uma compra vai cair */
+function ondeCai(data, pg, parc) {
+  const c = pg && pg !== 'conta' ? cartaoPor(pg) : null;
+  if (!c || !data) return data ? `Sai da conta em ${nomeMes(data.slice(0, 7))}.` : '';
+  const m = mesFatura(data, c), n = clamp(+parc || 1, 1, 48);
+  return `Entra na fatura do ${esc(c.nome)} que vence em ${fmtData(diaVenc(m, +c.vence))} (${nomeMes(m)})${n > 1 ? `; a última parcela vence em ${nomeMes(addMes(m, n - 1))}` : ''}.`;
 }
 
 /* ---------------- Progresso ---------------- */
@@ -724,8 +764,15 @@ const STEPS = [
       <div class="stack"><b class="small">Gastos fixos mensais (R$)</b><div class="grid2">${FIXOS.map(([k, l]) => fNum('fx-' + k, l, (f.fixos || {})[k])).join('')}</div></div>
       <div class="grid2">${fNum('dividaTotal', 'Dívidas em aberto (R$)', f.dividaTotal, { h: 'cartão, empréstimos' })}${fNum('dividaParcela', 'Parcelas por mês (R$)', f.dividaParcela)}${fNum('reservaAtual', 'Já tenho guardado (R$)', f.reservaAtual)}</div>
       ${fSel('metodo', 'Como dividir a renda', Object.entries(METODOS).map(([k, v]) => [k, v.n]), f.metodo || '50/30/20', { h: 'essenciais / estilo de vida / futuro' })}
+      <div class="stack"><b class="small">Cartões de crédito (até 3)</b><p class="small muted">O dia de fechamento e o de vencimento estão no app do banco. Com eles, cada compra entra na fatura certa.</p>
+      ${[0, 1, 2].map(i => { const c = (f.cartoes || [])[i] || {}; return `<div class="grid2">${fTxt('cn' + i, 'Cartão', c.nome, { ph: i ? '' : 'Ex.: Nubank' })}${fNum('cf' + i, 'Dia do fechamento', c.fecha, { min: 1, step: 1 })}${fNum('cv' + i, 'Dia do vencimento', c.vence, { min: 1, step: 1 })}${fNum('ca' + i, 'Fatura aberta hoje (R$)', '', { h: c.nome ? 'só se ainda não lançou essas compras' : 'total que o app do banco mostra' })}</div>`; }).join('')}</div>
       <div class="stack"><b class="small">Metas de economia (até 3)</b>${[0, 1, 2].map(i => { const m = (f.metas || [])[i] || {}; return `<div class="grid2">${fTxt('mn' + i, 'Meta', m.nome, { ph: i ? '' : 'Ex.: viagem, carro, curso' })}${fNum('mv' + i, 'Valor (R$)', m.valor)}${fNum('mp' + i, 'Prazo (meses)', m.prazo)}</div>`; }).join('')}</div>`,
     read: fd => { const f = S.fin; f.renda = num(fd.get('renda')); f.fixos = Object.fromEntries(FIXOS.map(([k]) => [k, num(fd.get('fx-' + k))])); f.dividaTotal = num(fd.get('dividaTotal')); f.dividaParcela = num(fd.get('dividaParcela')); f.reservaAtual = num(fd.get('reservaAtual')); f.metodo = fd.get('metodo');
+      const velhos = f.cartoes || [];
+      f.cartoes = [0, 1, 2].map(i => ({ nome: (fd.get('cn' + i) || '').trim(), fecha: clamp(num(fd.get('cf' + i)) || 0, 0, 31), vence: clamp(num(fd.get('cv' + i)) || 0, 0, 31) }))
+        .filter(c => c.nome && c.fecha && c.vence).map(c => ({ ...c, id: (velhos.find(v => v.nome === c.nome) || {}).id || 'c' + novaChave() }));
+      [0, 1, 2].forEach(i => { const v = num(fd.get('ca' + i)), nome = (fd.get('cn' + i) || '').trim(), c = f.cartoes.find(x => x.nome === nome);
+        if (v && c) S.logs.gastos.push({ k: novaChave(), data: hoje(), desc: `Fatura aberta do ${c.nome} (saldo inicial)`, valor: v, cat: 'cartaoini', pg: c.id, parc: 1 }); });
       const antigas = f.metas || []; f.metas = [0, 1, 2].map(i => ({ nome: (fd.get('mn' + i) || '').trim(), valor: num(fd.get('mv' + i)), prazo: num(fd.get('mp' + i)) })).filter(m => m.nome && m.valor).map(m => { const a = antigas.find(x => x.nome === m.nome); return { ...m, guardado: a ? a.guardado : 0, criado: a ? a.criado : hoje() }; }); } },
 ];
 function startWizard(ids) { wiz = { ids: ids || STEPS.map(s => s.id), i: 0 }; render(); window.scrollTo(0, 0); }
@@ -852,22 +899,49 @@ function vFin() {
   if (r.renda) {
     if (r.grp.des > r.orc.des) { const top = cats.find(([c]) => CATMAP[c].g === 'des'); insights.push({ t: 'bad', m: `Estilo de vida passou ${brl(r.grp.des - r.orc.des)} do limite.${top ? ` Maior gasto: ${CATMAP[top[0]].n} (${brl(top[1])}). Cortar 30% dele libera ${brl(top[1] * 0.3)} por mês.` : ''}` }); }
     if (r.grp.ess > r.orc.ess) insights.push({ t: 'warn', m: `Os essenciais estão em ${n0(r.grp.ess / r.renda * 100)}% da renda (meta: ${r.met.ess}%). Se for sempre assim, o método 60/20/20 é mais realista para você.` });
-    if (r.g.length && r.livre > 0) insights.push({ t: 'info', m: `Sobram ${brl(r.livre)} este mês. Direcione para ${(+f.dividaParcela > 0) ? 'quitar dívidas caras primeiro' : rs.atual < rs.alvo ? 'a reserva de emergência' : 'suas metas'}.` });
+    if (r.g.length && r.livre > 0 && m <= mesAtual()) insights.push({ t: 'info', m: `Sobram ${brl(r.livre)} neste mês. Direcione para ${(+f.dividaParcela > 0) ? 'quitar dívidas caras primeiro' : rs.atual < rs.alvo ? 'a reserva de emergência' : 'suas metas'}.` });
     if (+f.dividaTotal > 0) insights.push({ t: 'warn', m: `Dívidas em aberto: ${brl(f.dividaTotal)}. Juros de cartão e cheque especial costumam ser maiores que qualquer investimento: quite essas antes de investir.` });
   }
-  return `<section class="hero"><p class="eyebrow">Finanças</p><h1>${nomeMes(m)}</h1>
+  const cs = cartoes(), oc = ocorrencias();
+  // faturas dos cartões: a que vence no mês exibido e a seguinte
+  const faturas = cs.flatMap(c => [m, addMes(m, 1)].map(mv => {
+    const itens = oc.filter(x => x.cartao && x.cartao.id === c.id && x.mes === mv);
+    const fecha = fechamentoDe(mv, c), venc = diaVenc(mv, +c.vence);
+    const abre = fechamentoDe(addMes(mv, -1), c);
+    const st = hoje() >= venc ? ['vencida', ''] : hoje() >= fecha ? ['fechada, a pagar', 'warn'] : hoje() >= abre ? ['aberta', 'ok'] : ['futura', ''];
+    return { c, mv, itens, total: itens.reduce((t, x) => t + x.valor, 0), fecha, venc, st };
+  })).filter(ft => ft.itens.length || ft.mv === faturaAberta(ft.c));
+  // compromissos já assumidos nos próximos meses (parcelas e faturas)
+  const futuros = Array.from({ length: 6 }, (_, i) => addMes(mesAtual(), i + 1)).map(mf => ({ mf, v: oc.filter(x => x.mes === mf && x.cartao).reduce((t, x) => t + x.valor, 0) })).filter(x => x.v > 0);
+  const prox = addMes(m, 1), cartaoProx = oc.filter(x => x.mes === prox && x.cartao).reduce((t, x) => t + x.valor, 0);
+  if (r.renda && cartaoProx > 0) insights.push({ t: cartaoProx > r.renda * 0.3 ? 'warn' : 'info', m: `${nomeMes(prox).replace(/^./, c => c.toUpperCase())} já tem ${brl(cartaoProx)} comprometidos no cartão (${n0(cartaoProx / r.renda * 100)}% da renda).` });
+  const pgOpts = [['conta', 'Conta, Pix, débito ou dinheiro'], ...cs.map(c => [c.id, `Cartão ${c.nome}`])];
+  const pgPadrao = S.ui.ultPg && pgOpts.some(o => o[0] === S.ui.ultPg) ? S.ui.ultPg : 'conta';
+  const dataPadrao = m === mesAtual() ? hoje() : m + '-01';
+  return `<section class="hero"><p class="eyebrow">Finanças · mês de pagamento</p><h1>${nomeMes(m)}</h1>
+    <p class="small muted">Aqui entra o que sai da sua conta neste mês. Compras no cartão aparecem no mês em que a fatura vence, não no dia da compra.</p>
     <div class="row"><button class="btn ghost sm" data-act="mes" data-d="-1">← anterior</button>${m !== mesAtual() ? '<button class="btn ghost sm" data-act="mes" data-d="0">mês atual</button>' : ''}<button class="btn ghost sm" data-act="mes" data-d="1">próximo →</button></div></section>
   ${!r.renda ? '<div class="note">Preencha sua renda no questionário de finanças (Ajustes) para ver o orçamento.</div>' : ''}
+  ${!cs.length ? '<div class="note info small">Cadastre seus cartões (dia de fechamento e de vencimento) em Ajustes → Finanças para o app separar o que você compra hoje do que paga no mês que vem.</div>' : ''}
   <section class="panel"><div class="row between"><h2>Orçamento</h2><span class="tag">${r.met.n.split(' ·')[0]}</span></div>
-    <div class="grid2"><div class="stat"><span>Renda</span><b>${brl(r.renda)}</b></div><div class="stat"><span>Gasto no mês</span><b>${brl(r.consumo)}</b></div><div class="stat"><span>Guardado</span><b>${brl(r.grp.fut)}</b></div><div class="stat"><span>Livre</span><b style="color:${r.livre < 0 ? 'var(--bad)' : 'inherit'}">${brl(r.livre)}</b></div></div>
+    <div class="grid2"><div class="stat"><span>Renda</span><b>${brl(r.renda)}</b></div><div class="stat"><span>Saídas do mês</span><b>${brl(r.consumo)}</b></div><div class="stat"><span>Guardado</span><b>${brl(r.grp.fut)}</b></div><div class="stat"><span>Livre</span><b style="color:${r.livre < 0 ? 'var(--bad)' : 'inherit'}">${brl(r.livre)}</b></div></div>
+    ${r.cartao ? `<p class="small muted">Das saídas, ${brl(r.cartao)} são fatura de cartão.</p>` : ''}
     <div class="stack">${['ess', 'des', 'fut'].map(k => `<div class="row between small"><span>${GRUPOFIN[k]} · meta ${r.met[k]}%</span><span class="num">${brl(r.grp[k])} / ${brl(r.orc[k])}</span></div>${k === 'fut' ? bar(r.grp[k], r.orc[k]).replace('over', '') : bar(r.grp[k], r.orc[k])}`).join('')}</div>
     ${insights.map(i => `<div class="note ${i.t} small">${i.m}</div>`).join('')}</section>
   <form class="panel stack" data-form="gasto"><h2>Novo lançamento</h2><div class="grid2">
-    ${fNum('valor', 'Valor (R$)', '', { req: 1, min: 0.01, step: 0.01 })}${fTxt('desc', 'Descrição', '', { ph: 'Ex.: iFood sexta' })}
-    ${fSel('cat', 'Categoria', CATS.map(([id, n, g]) => [id, `${n} · ${GRUPOFIN[g]}`]), 'mercado')}${fTxt('data', 'Data', m === mesAtual() ? hoje() : m + '-01', { type: 'date' })}</div>
-    <div class="row"><button class="btn" type="submit">Adicionar</button>${fixosTotal() && !lancado ? `<button type="button" class="btn ghost" data-act="lancarFixos">Lançar gastos fixos (${brl(fixosTotal())})</button>` : ''}</div></form>
-  <section class="panel"><h2>Por categoria</h2>${cats.length ? `<div class="tw"><table><thead><tr><th>Categoria</th><th class="r">Valor</th><th class="r">% renda</th></tr></thead><tbody>${cats.map(([c, v]) => `<tr><td>${CATMAP[c].n}</td><td class="r num">${brl(v)}</td><td class="r num">${r.renda ? n1(v / r.renda * 100) + '%' : '–'}</td></tr>`).join('')}</tbody></table></div>` : '<p class="muted small">Sem lançamentos neste mês.</p>'}
-    ${r.g.length ? `<details><summary>Lançamentos (${r.g.length})</summary><div class="list">${[...r.g].sort((a, b) => b.data.localeCompare(a.data)).map(x => `<div class="li small"><span>${fmtData(x.data)} · ${esc(x.desc || CATMAP[x.cat].n)} <span class="muted">· ${CATMAP[x.cat].n}</span></span><span class="row"><span class="num">${brl(x.valor)}</span><button class="x" data-act="rmGasto" data-k="${x.k}" aria-label="Apagar">×</button></span></div>`).join('')}</div></details>` : ''}</section>
+    ${fNum('valor', 'Valor total (R$)', '', { req: 1, min: 0.01, step: 0.01 })}${fTxt('desc', 'Descrição', '', { ph: 'Ex.: iFood sexta' })}
+    ${fSel('cat', 'Categoria', CATS.filter(c => c[0] !== 'cartaoini').map(([id, n, g]) => [id, `${n} · ${GRUPOFIN[g]}`]), 'mercado')}${fTxt('data', 'Data da compra', dataPadrao, { type: 'date' })}
+    ${fSel('pg', 'Como pagou', pgOpts, pgPadrao)}${fSel('parc', 'Parcelas', Array.from({ length: 24 }, (_, i) => [i + 1, i ? `${i + 1}x` : 'À vista']), 1, { h: 'só para cartão' })}</div>
+    <p class="small" id="onde-cai">${ondeCai(dataPadrao, pgPadrao, 1)}</p>
+    <p class="small muted">Parcelamento antigo? Lance com a data da compra original e o total de parcelas: o app mostra só as que faltam.</p>
+    <div class="row"><button class="btn" type="submit">Adicionar</button>${fixosTotal() && !lancado ? `<button type="button" class="btn ghost" data-act="lancarFixos">Lançar gastos fixos de ${nomeMes(m).split(' ')[0]} (${brl(fixosTotal())})</button>` : ''}</div></form>
+  ${faturas.length ? `<section class="panel"><h2>Faturas</h2>${faturas.map(ft => `<div class="stack" style="border-top:1px solid var(--line);padding-top:10px">
+      <div class="row between"><b>${esc(ft.c.nome)} · vence ${fmtData(ft.venc)}</b><span class="row"><span class="chip ${ft.st[1]}">${ft.st[0]}</span><span class="num">${brl(ft.total)}</span></span></div>
+      <p class="small muted">Fecha em ${fmtData(ft.fecha)}. ${ft.st[0] === 'aberta' ? 'Compras de hoje entram nesta fatura.' : ft.st[0] === 'futura' ? 'Por enquanto, só parcelas já assumidas.' : ''}</p>
+      ${ft.itens.length ? `<details><summary class="small">${ft.itens.length} ${ft.itens.length > 1 ? 'itens' : 'item'}</summary><div class="list">${ft.itens.sort((a, b) => b.data.localeCompare(a.data)).map(x => `<div class="li small"><span>${fmtData(x.data)} · ${esc(x.desc || CATMAP[x.cat].n)}${x.parcela ? ` <span class="tag">${x.parcela}</span>` : ''}</span><span class="num">${brl(x.valor)}</span></div>`).join('')}</div></details>` : ''}</div>`).join('')}</section>` : ''}
+  ${futuros.length ? `<section class="panel"><h2>Já comprometido</h2><p class="small muted">Parcelas e faturas que você já assumiu para os próximos meses.</p><div class="tw"><table><thead><tr><th>Mês</th><th class="r">No cartão</th><th class="r">% da renda</th></tr></thead><tbody>${futuros.map(x => `<tr><td>${nomeMes(x.mf)}</td><td class="r num">${brl(x.v)}</td><td class="r num">${r.renda ? n0(x.v / r.renda * 100) + '%' : '–'}</td></tr>`).join('')}</tbody></table></div></section>` : ''}
+  <section class="panel"><h2>Por categoria</h2>${cats.length ? `<div class="tw"><table><thead><tr><th>Categoria</th><th class="r">Valor</th><th class="r">% renda</th></tr></thead><tbody>${cats.map(([c, v]) => `<tr><td>${CATMAP[c].n}</td><td class="r num">${brl(v)}</td><td class="r num">${r.renda ? n1(v / r.renda * 100) + '%' : '–'}</td></tr>`).join('')}</tbody></table></div>` : '<p class="muted small">Nada a pagar neste mês ainda.</p>'}
+    ${r.g.length ? `<details><summary>Lançamentos do mês (${r.g.length})</summary><div class="list">${[...r.g].sort((a, b) => b.data.localeCompare(a.data)).map(x => `<div class="li small"><span>${fmtData(x.data)} · ${esc(x.desc || CATMAP[x.cat].n)} <span class="muted">· ${CATMAP[x.cat].n}${x.cartao ? ` · ${esc(x.cartao.nome)}` : ''}</span>${x.parcela ? ` <span class="tag">${x.parcela}</span>` : ''}</span><span class="row"><span class="num">${brl(x.valor)}</span><button class="x" data-act="rmGasto" data-k="${x.k}" aria-label="Apagar${x.parcela ? ' a compra e todas as parcelas' : ''}">×</button></span></div>`).join('')}</div><p class="small muted">Apagar uma parcela remove a compra inteira.</p></details>` : ''}</section>
   <section class="panel"><h2>Reserva de emergência</h2><p class="small muted">Meta de 6 meses dos seus gastos essenciais (${brl(rs.base)} por mês). Fica num investimento com liquidez diária, como Tesouro Selic ou CDB com resgate imediato.</p>
     <div class="row between small"><span>${brl(rs.atual)}</span><span class="num">meta ${brl(rs.alvo)}</span></div>${bar(rs.atual, rs.alvo).replace('over', '')}
     <p class="small">${rs.atual >= rs.alvo && rs.alvo > 0 ? 'Reserva completa. Agora o foco vai para as metas.' : `Faltam ${brl(Math.max(0, rs.alvo - rs.atual))}. Com ${brl(r.orc.fut)} por mês, você chega lá em ${r.orc.fut > 0 ? Math.ceil(Math.max(0, rs.alvo - rs.atual) / r.orc.fut) : '–'} meses.`} Lance depósitos na categoria "Reserva de emergência".</p></section>
@@ -987,13 +1061,17 @@ const FORMS = {
     tr.ex.forEach(e => { const sets = []; for (let i = 0; i < e.sets; i++) { const kg = num(fd.get(`kg-${e.id}-${i}`)), reps = num(fd.get(`rp-${e.id}-${i}`)); if (reps) sets.push({ kg: kg || 0, reps }); } if (sets.length) ex[e.id] = sets; });
     if (!Object.keys(ex).length) { toast('Preencha as repetições de pelo menos uma série'); return; }
     S.logs.treinos.push({ k: novaChave(), data: fd.get('data') || hoje(), id, ex }); save(); render(); window.scrollTo(0, 0); toast(`Treino ${id} salvo`); },
-  gasto: fd => { const v = num(fd.get('valor')); if (!v) return; S.logs.gastos.push({ k: novaChave(), data: fd.get('data') || hoje(), desc: (fd.get('desc') || '').trim(), valor: v, cat: fd.get('cat') }); save(); render(); toast('Lançamento adicionado'); },
+  gasto: fd => { const v = num(fd.get('valor')); if (!v) return; const pg = fd.get('pg') || 'conta', data = fd.get('data') || hoje(), parc = pg === 'conta' ? 1 : +fd.get('parc') || 1;
+    S.logs.gastos.push({ k: novaChave(), data, desc: (fd.get('desc') || '').trim(), valor: v, cat: fd.get('cat'), pg, parc }); S.ui.ultPg = pg; save(); render();
+    const c = cartaoPor(pg); toast(c ? `Na fatura que vence em ${fmtData(diaVenc(mesFatura(data, c), +c.vence))}` : 'Lançamento adicionado'); },
   meta: (fd, f) => { const m = S.fin.metas[+f.dataset.i]; m.guardado = (+m.guardado || 0) + (num(fd.get('v')) || 0); save(); render(); toast('Valor somado à meta'); },
   reintro: fd => { S.logs.reintro.push({ data: hoje(), grupo: fd.get('grupo'), alimento: (fd.get('alimento') || '').trim(), reacao: fd.get('reacao') }); save(); render(); toast('Resultado salvo'); },
   importar: fd => { try { const r = JSON.parse(fd.get('json')); if (!r || typeof r !== 'object' || !('perfil' in r)) throw 0; S = merge(r); save(); wiz = null; render(); toast('Backup restaurado'); } catch (e) { toast('Esse conteúdo não é um backup válido do app.'); } },
 };
 document.addEventListener('click', e => { const b = e.target.closest('[data-act]'); if (b && ACTIONS[b.dataset.act]) { e.preventDefault(); ACTIONS[b.dataset.act](b, e); } });
 document.addEventListener('submit', e => { const f = e.target.closest('form[data-form]'); if (!f) return; e.preventDefault(); FORMS[f.dataset.form](new FormData(f), f); });
+document.addEventListener('input', e => { const f = e.target.closest && e.target.closest('form[data-form="gasto"]'); if (!f) return;
+  const fd = new FormData(f), h = document.getElementById('onde-cai'); if (h) h.innerHTML = ondeCai(fd.get('data'), fd.get('pg'), fd.get('pg') === 'conta' ? 1 : fd.get('parc')); });
 document.addEventListener('change', e => { if (e.target.id === 'f-impfile' && e.target.files[0]) { const rd = new FileReader(); rd.onload = () => { document.getElementById('f-imp').value = rd.result; }; rd.readAsText(e.target.files[0]); } });
 
 render();
