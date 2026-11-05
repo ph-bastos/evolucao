@@ -671,22 +671,297 @@ const ABD = [{ n: 'Abdominal infra (chão ou banco)', s: '4 × 15' }, { n: 'Abdo
 const SEMANA = { 5: ['A', 'B', 'C', null, 'D', 'E', null], 4: ['A', 'B', 'C', null, 'D', null, null], 3: ['A', null, 'C', null, 'B', null, null] };
 const DIAS = ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom'];
 
+/* ---------------- Biblioteca de programas (blocos de 8 semanas) ----------------
+   Cada bloco: 7 semanas de treino + 1 semana de descarga (volume reduzido).
+   "Atualizar treino" (Ajustes) avança para o próximo bloco; depois do último, volta ao primeiro.
+   O histórico de cargas segue o NOME do exercício, então ele continua valendo entre blocos.
+   Para criar um bloco: copie um existente, troque o id e edite os exercícios.
+   X(nome, séries, reps mín, reps máx, descanso em s, técnica, extras)
+   extras: casa (versão em casa), risk + seguro (troca se tiver dor), pre (aquecimento),
+           m: 'drop' | 'piramide' | 'fst7' | 'biset' (faça junto com o próximo) | 'restpause' */
+const X = (n, sets, a, b, int, tec, o = {}) => ({ n, sets, f: [a, b], int, tec: tec || 'Próximo da falha (0–2 repetições em reserva)', ...o });
+const FALHA = 'Próximo da falha (0–2 repetições em reserva)';
+const PESADO = 'Pesado, 1–2 repetições em reserva, técnica perfeita';
+const BISET = 'Bi-set: faça logo em seguida o próximo exercício, sem descanso; descanse só depois do par';
+const PROGRAMAS = {
+  p0: { nome: 'Peito de Aço', foco: 'Peito e ombros, peito 2x por semana, FST-7 e drop sets', quando: 'nov–dez 2026', treinos: PROG },
+  p1: { nome: 'Base de Força', foco: 'Exercícios compostos pesados (4–8 reps) e descansos longos para subir as cargas de base', quando: 'jan–fev 2027', treinos: {
+    A: { nome: 'Peito e tríceps · força', ex: [
+      X('Supino reto com barra', 4, 5, 7, 150, PESADO, { pre: '2–3 séries de aproximação', risk: ['ombro'], seguro: 'Supino máquina, pegada neutra', casa: 'Supino reto com halteres' }),
+      X('Supino inclinado com halteres', 3, 6, 8, 120),
+      X('Mergulho nas paralelas', 3, 6, 10, 90, FALHA, { risk: ['ombro'], seguro: 'Supino declinado na máquina', casa: 'Flexão com pés elevados' }),
+      X('Crossover polia baixa', 3, 10, 12, 60, FALHA, { casa: 'Crucifixo inclinado com halteres' }),
+      X('Tríceps testa com barra W', 3, 8, 10, 75, FALHA, { casa: 'Tríceps testa com halteres' }),
+      X('Tríceps na corda acima da cabeça', 3, 10, 12, 60, 'Próximo da falha; alongar bem embaixo', { casa: 'Tríceps francês com halter' }),
+    ]},
+    B: { nome: 'Quadríceps · força', ex: [
+      X('Agachamento livre', 4, 5, 7, 180, PESADO, { pre: '1×10 leve e 2–3 aproximações', risk: ['joelho', 'lombar'], seguro: 'Leg press 45° pesado', casa: 'Agachamento goblet com pausa' }),
+      X('Leg press 45°', 3, 8, 10, 120, FALHA, { casa: 'Afundo com halteres' }),
+      X('Cadeira extensora', 3, 10, 12, 60, FALHA, { casa: 'Agachamento sissy assistido' }),
+      X('Stiff com barra', 3, 8, 10, 120, FALHA, { risk: ['lombar'], seguro: 'Mesa flexora', casa: 'Stiff com halteres' }),
+      X('Panturrilha sentado', 4, 10, 12, 45, 'Pausa de 1 s embaixo, alongado', { casa: 'Panturrilha unilateral em degrau' }),
+    ]},
+    C: { nome: 'Costas e bíceps · força', ex: [
+      X('Levantamento terra', 3, 4, 6, 180, PESADO, { pre: '2–3 aproximações', risk: ['lombar'], seguro: 'Remada cavalinho com apoio no peito', casa: 'Terra romeno com halteres' }),
+      X('Barra fixa (com peso se passar de 8)', 4, 5, 8, 120, PESADO, { casa: 'Barra fixa' }),
+      X('Remada curvada pronada', 3, 6, 8, 120, FALHA, { risk: ['lombar'], seguro: 'Remada com peito apoiado no banco', casa: 'Remada curvada com halteres' }),
+      X('Puxada pegada neutra', 3, 8, 10, 90, FALHA, { casa: 'Remada unilateral com halter' }),
+      X('Rosca direta com barra', 3, 6, 8, 90, FALHA, { casa: 'Rosca direta com halteres' }),
+      X('Rosca martelo', 3, 8, 10, 60),
+    ]},
+    D: { nome: 'Ombros e peito superior · força', ex: [
+      X('Desenvolvimento militar em pé', 4, 5, 7, 150, PESADO, { risk: ['ombro', 'lombar'], seguro: 'Desenvolvimento na máquina', casa: 'Desenvolvimento com halteres sentado' }),
+      X('Supino inclinado com barra', 3, 6, 8, 120, FALHA, { risk: ['ombro'], seguro: 'Supino inclinado na máquina', casa: 'Supino inclinado com halteres' }),
+      X('Elevação lateral com halteres', 4, 10, 12, 60),
+      X('Face pull na corda', 3, 12, 15, 60, 'Cotovelos altos, puxe até a testa', { casa: 'Crucifixo inverso com elástico' }),
+      X('Voador', 3, 10, 12, 60, FALHA, { casa: 'Crucifixo com halteres' }),
+      X('Encolhimento com halteres', 3, 8, 10, 60),
+    ]},
+    E: { nome: 'Posterior e glúteo · força', ex: [
+      X('Elevação pélvica com barra (hip thrust)', 4, 6, 8, 120, PESADO, { casa: 'Elevação pélvica com halter' }),
+      X('Mesa flexora', 4, 8, 10, 75, FALHA, { casa: 'Flexão nórdica assistida' }),
+      X('Agachamento búlgaro', 3, 8, 10, 90, FALHA, { risk: ['joelho'], seguro: 'Leg press unilateral' }),
+      X('Cadeira flexora sentada', 3, 10, 12, 60, 'Próximo da falha; sentado alonga mais o posterior', { casa: 'Stiff unilateral com halter' }),
+      X('Cadeira abdutora', 3, 12, 15, 45, FALHA, { casa: 'Abdução com elástico' }),
+      X('Panturrilha em pé', 4, 8, 10, 45, 'Pausa de 1 s embaixo', { casa: 'Panturrilha unilateral em degrau' }),
+    ]},
+  }},
+  p2: { nome: 'Costas Largas e Braços', foco: 'Costas 2x por semana (largura e espessura) e um dia só de braços', quando: 'mar–abr 2027', treinos: {
+    A: { nome: 'Peito e ombros', ex: [
+      X('Supino inclinado com halteres', 4, 8, 10, 90, FALHA, { risk: ['ombro'], seguro: 'Supino inclinado na máquina, pegada neutra' }),
+      X('Supino máquina sentado', 3, 10, 12, 60, FALHA, { casa: 'Flexão de braço' }),
+      X('Crucifixo no cabo', 3, 12, 15, 60, FALHA, { casa: 'Crucifixo com halteres' }),
+      X('Desenvolvimento com halteres', 3, 8, 10, 90, FALHA, { risk: ['ombro'], seguro: 'Desenvolvimento na máquina, amplitude parcial' }),
+      X('Elevação lateral no cabo', 4, 12, 15, 45, FALHA, { casa: 'Elevação lateral com elástico' }),
+      X('Tríceps na corda', 3, 12, 15, 45, FALHA, { casa: 'Tríceps coice com halter' }),
+    ]},
+    B: { nome: 'Pernas completo', ex: [
+      X('Agachamento hack', 4, 8, 10, 120, FALHA, { risk: ['joelho'], seguro: 'Leg press com pés altos', casa: 'Agachamento búlgaro com halteres' }),
+      X('Leg press 45°', 3, 10, 12, 90, FALHA, { casa: 'Agachamento goblet' }),
+      X('Mesa flexora', 4, 10, 12, 60, FALHA, { casa: 'Stiff com halteres' }),
+      X('Cadeira extensora', 3, 12, 15, 60, 'Drop set na última série', { m: 'drop', casa: 'Afundo andando' }),
+      X('Panturrilha no leg press', 4, 12, 15, 45, FALHA, { casa: 'Panturrilha unilateral em degrau' }),
+    ]},
+    C: { nome: 'Costas (largura) e bíceps', ex: [
+      X('Barra fixa pegada aberta', 4, 6, 10, 120, FALHA, { casa: 'Barra fixa' }),
+      X('Puxada frente', 3, 10, 12, 75, FALHA, { casa: 'Remada unilateral com halter' }),
+      X('Pulldown na corda', 3, 12, 15, 60, FALHA, { casa: 'Pullover com halter' }),
+      X('Remada unilateral com halter', 3, 8, 10, 75),
+      X('Rosca inclinada com halteres', 4, 10, 12, 60),
+      X('Rosca concentrada', 3, 12, 15, 45),
+    ]},
+    D: { nome: 'Braços', ex: [
+      X('Supino fechado', 4, 6, 8, 120, FALHA, { risk: ['ombro'], seguro: 'Tríceps na máquina (paralela)', casa: 'Flexão fechada (diamante)' }),
+      X('Rosca direta com barra W', 4, 8, 10, 75, FALHA, { casa: 'Rosca direta com halteres' }),
+      X('Tríceps francês no cabo', 3, 10, 12, 60, 'Próximo da falha; alongar bem', { casa: 'Tríceps francês com halter' }),
+      X('Rosca Scott na máquina', 3, 10, 12, 60, FALHA, { casa: 'Rosca concentrada' }),
+      X('Rosca martelo', 3, 10, 12, 60),
+      X('Tríceps coice no cabo', 3, 12, 15, 45, FALHA, { casa: 'Tríceps coice com halter' }),
+      X('Elevação lateral com halteres', 3, 15, 20, 45),
+    ]},
+    E: { nome: 'Costas (espessura) e posterior', ex: [
+      X('Remada curvada pronada', 4, 6, 8, 120, FALHA, { risk: ['lombar'], seguro: 'Remada com peito apoiado no banco', casa: 'Remada curvada com halteres' }),
+      X('Remada cavalinho', 3, 8, 10, 90, FALHA, { casa: 'Remada com halteres apoiado no banco' }),
+      X('Remada baixa (triângulo)', 3, 10, 12, 75, FALHA, { casa: 'Remada com elástico' }),
+      X('Stiff com halteres', 3, 10, 12, 90, FALHA, { risk: ['lombar'], seguro: 'Mesa flexora' }),
+      X('Crucifixo inverso na máquina', 4, 12, 15, 45, FALHA, { casa: 'Crucifixo inverso com halteres' }),
+      X('Encolhimento com halteres', 3, 10, 12, 60),
+    ]},
+  }},
+  p3: { nome: 'Pernas e Glúteos', foco: 'Pernas 2x por semana com volume alto; superiores em empurrar, puxar e um dia completo', quando: 'mai–jun 2027', treinos: {
+    A: { nome: 'Empurrar: peito, ombro e tríceps', ex: [
+      X('Supino reto com halteres', 4, 8, 10, 90, FALHA, { risk: ['ombro'], seguro: 'Supino máquina, pegada neutra' }),
+      X('Supino inclinado na máquina', 3, 10, 12, 75, FALHA, { casa: 'Supino inclinado com halteres' }),
+      X('Desenvolvimento com halteres', 3, 8, 10, 90, FALHA, { risk: ['ombro'], seguro: 'Elevação lateral sentado (amplitude parcial)' }),
+      X('Elevação lateral com halteres', 4, 12, 15, 45),
+      X('Tríceps na corda acima da cabeça', 3, 10, 12, 60, 'Próximo da falha; alongar bem', { casa: 'Tríceps francês com halter' }),
+    ]},
+    B: { nome: 'Quadríceps', ex: [
+      X('Agachamento livre', 4, 6, 8, 150, FALHA, { pre: '1×10 leve e 2 aproximações', risk: ['joelho', 'lombar'], seguro: 'Leg press 45°', casa: 'Agachamento goblet com pausa' }),
+      X('Leg press 45° com pés baixos', 3, 10, 12, 90, FALHA, { casa: 'Afundo com halteres' }),
+      X('Agachamento búlgaro', 3, 8, 10, 75, FALHA, { risk: ['joelho'], seguro: 'Elevação pélvica' }),
+      X('Cadeira extensora', 4, 12, 15, 60, 'Drop set na última série', { m: 'drop', casa: 'Agachamento sissy assistido' }),
+      X('Panturrilha em pé', 4, 10, 12, 45, 'Pausa de 1 s embaixo', { casa: 'Panturrilha unilateral em degrau' }),
+    ]},
+    C: { nome: 'Puxar: costas e bíceps', ex: [
+      X('Puxada frente', 4, 8, 10, 90, FALHA, { casa: 'Barra fixa' }),
+      X('Remada baixa (triângulo)', 3, 10, 12, 75, FALHA, { casa: 'Remada com elástico' }),
+      X('Remada unilateral com halter', 3, 8, 10, 75),
+      X('Crucifixo inverso na máquina', 3, 12, 15, 45, FALHA, { casa: 'Crucifixo inverso com halteres' }),
+      X('Rosca direta com barra W', 3, 8, 10, 60, FALHA, { casa: 'Rosca direta com halteres' }),
+      X('Rosca martelo', 3, 10, 12, 60),
+    ]},
+    D: { nome: 'Superiores completo', ex: [
+      X('Supino inclinado com barra', 3, 6, 8, 120, FALHA, { risk: ['ombro'], seguro: 'Supino inclinado na máquina', casa: 'Supino inclinado com halteres' }),
+      X('Barra fixa', 3, 6, 10, 120, FALHA),
+      X('Crossover', 3, 12, 15, 60, FALHA, { casa: 'Crucifixo com elástico' }),
+      X('Remada cavalinho', 3, 10, 12, 75, FALHA, { casa: 'Remada curvada com halteres' }),
+      X('Elevação lateral no cabo', 3, 12, 15, 45, FALHA, { casa: 'Elevação lateral com elástico' }),
+      X('Rosca no cabo', 3, 12, 15, 0, BISET, { m: 'biset', casa: 'Rosca alternada com halteres' }),
+      X('Tríceps na polia com barra reta', 3, 12, 15, 60, 'Logo após a rosca; depois descanse', { casa: 'Tríceps coice com halter' }),
+    ]},
+    E: { nome: 'Posterior e glúteo', ex: [
+      X('Stiff com barra', 4, 8, 10, 120, FALHA, { risk: ['lombar'], seguro: 'Mesa flexora', casa: 'Stiff com halteres' }),
+      X('Elevação pélvica com barra (hip thrust)', 4, 8, 10, 90, 'Pausa de 1 s em cima', { casa: 'Elevação pélvica com halter' }),
+      X('Cadeira flexora sentada', 4, 10, 12, 60, FALHA, { casa: 'Flexão nórdica assistida' }),
+      X('Afundo andando com halteres', 3, 10, 12, 75, 'Passos longos para focar glúteo', { risk: ['joelho'], seguro: 'Abdução no cabo' }),
+      X('Cadeira abdutora', 3, 15, 20, 45, FALHA, { casa: 'Abdução com elástico' }),
+      X('Panturrilha sentado', 4, 12, 15, 45, FALHA, { casa: 'Panturrilha unilateral em degrau' }),
+    ]},
+  }},
+  p4: { nome: 'Ombros 3D', foco: 'Deltoides 3x por semana (frontal, lateral e posterior) e peito superior', quando: 'jul–ago 2027', treinos: {
+    A: { nome: 'Peito superior e tríceps', ex: [
+      X('Supino inclinado com halteres', 4, 8, 10, 90, FALHA, { risk: ['ombro'], seguro: 'Supino inclinado na máquina, pegada neutra' }),
+      X('Supino inclinado na máquina', 3, 10, 12, 75, FALHA, { casa: 'Flexão com pés elevados' }),
+      X('Crucifixo inclinado no cabo', 3, 12, 15, 60, FALHA, { casa: 'Crucifixo inclinado com halteres' }),
+      X('Elevação lateral com halteres', 3, 15, 20, 45, 'Rest-pause na última: falha, 15 s, mais reps', { m: 'restpause' }),
+      X('Tríceps testa com barra W', 3, 8, 10, 60, FALHA, { casa: 'Tríceps testa com halteres' }),
+      X('Tríceps na corda', 3, 12, 15, 45, FALHA, { casa: 'Tríceps coice com halter' }),
+    ]},
+    B: { nome: 'Pernas completo', ex: [
+      X('Leg press 45°', 4, 8, 10, 120, FALHA, { casa: 'Agachamento goblet' }),
+      X('Agachamento hack', 3, 8, 10, 120, FALHA, { risk: ['joelho'], seguro: 'Leg press com pés altos', casa: 'Agachamento búlgaro com halteres' }),
+      X('Mesa flexora', 4, 10, 12, 60, FALHA, { casa: 'Stiff unilateral com halter' }),
+      X('Cadeira extensora', 3, 12, 15, 60, FALHA, { casa: 'Afundo andando' }),
+      X('Stiff com halteres', 3, 10, 12, 90, FALHA, { risk: ['lombar'], seguro: 'Cadeira flexora sentada' }),
+      X('Panturrilha em pé', 4, 12, 15, 45, FALHA, { casa: 'Panturrilha unilateral em degrau' }),
+    ]},
+    C: { nome: 'Costas, deltoide posterior e bíceps', ex: [
+      X('Puxada pegada neutra', 4, 8, 10, 90, FALHA, { casa: 'Barra fixa' }),
+      X('Remada baixa pegada aberta', 3, 10, 12, 75, 'Cotovelos abertos, foco no deltoide posterior', { casa: 'Remada curvada aberta com halteres' }),
+      X('Face pull na corda', 4, 12, 15, 45, 'Cotovelos altos, puxe até a testa', { casa: 'Crucifixo inverso com elástico' }),
+      X('Crucifixo inverso na máquina', 3, 15, 20, 45, FALHA, { casa: 'Crucifixo inverso com halteres' }),
+      X('Rosca inclinada com halteres', 3, 10, 12, 60),
+      X('Rosca martelo', 3, 10, 12, 60),
+    ]},
+    D: { nome: 'Ombros completos', ex: [
+      X('Desenvolvimento com halteres sentado', 4, 6, 8, 120, PESADO, { pre: '1×12 leve', risk: ['ombro'], seguro: 'Desenvolvimento na máquina, amplitude parcial' }),
+      X('Elevação lateral unilateral no cabo', 4, 12, 15, 45, 'Começa atrás do corpo para alongar o deltoide', { casa: 'Elevação lateral com elástico' }),
+      X('Elevação frontal com anilha', 3, 10, 12, 45, FALHA, { casa: 'Elevação frontal com halter' }),
+      X('Crucifixo inverso com halteres', 3, 12, 15, 45),
+      X('Supino reto com halteres', 3, 8, 10, 90, FALHA, { risk: ['ombro'], seguro: 'Supino máquina, pegada neutra' }),
+      X('Encolhimento com halteres', 3, 10, 12, 60),
+    ]},
+    E: { nome: 'Quadríceps, glúteo e deltoide lateral', ex: [
+      X('Agachamento livre', 3, 6, 8, 150, FALHA, { risk: ['joelho', 'lombar'], seguro: 'Leg press 45°', casa: 'Agachamento goblet com pausa' }),
+      X('Elevação pélvica com barra (hip thrust)', 3, 8, 10, 90, FALHA, { casa: 'Elevação pélvica com halter' }),
+      X('Cadeira flexora sentada', 4, 10, 12, 60, FALHA, { casa: 'Flexão nórdica assistida' }),
+      X('Cadeira abdutora', 3, 15, 20, 45, FALHA, { casa: 'Abdução com elástico' }),
+      X('Elevação lateral com halteres', 3, 12, 15, 45, 'Drop set na última série', { m: 'drop' }),
+    ]},
+  }},
+  p5: { nome: 'Densidade', foco: 'Bi-sets e descansos curtos: treinos de 45–60 min, bom para fase de cutting', quando: 'set–out 2027', treinos: {
+    A: { nome: 'Peito, tríceps e ombro lateral', ex: [
+      X('Supino inclinado com halteres', 4, 8, 10, 0, BISET, { m: 'biset', risk: ['ombro'], seguro: 'Supino inclinado na máquina' }),
+      X('Flexão de braço', 4, 8, 15, 90, 'Até a falha, logo após o supino'),
+      X('Crossover', 3, 12, 15, 0, BISET, { m: 'biset', casa: 'Crucifixo com elástico' }),
+      X('Tríceps na corda', 3, 12, 15, 60, 'Logo após o crossover', { casa: 'Tríceps coice com halter' }),
+      X('Supino máquina sentado', 3, 10, 12, 60, 'Rest-pause na última: falha, 15 s, mais reps', { m: 'restpause', casa: 'Flexão fechada (diamante)' }),
+      X('Elevação lateral com halteres', 3, 15, 20, 45),
+    ]},
+    B: { nome: 'Quadríceps', ex: [
+      X('Leg press 45°', 4, 10, 12, 0, BISET, { m: 'biset', casa: 'Agachamento goblet' }),
+      X('Agachamento com peso do corpo', 4, 15, 20, 90, 'Logo após o leg press'),
+      X('Agachamento búlgaro', 3, 10, 12, 60, FALHA, { risk: ['joelho'], seguro: 'Elevação pélvica' }),
+      X('Cadeira extensora', 3, 15, 20, 45, 'Drop set na última série', { m: 'drop', casa: 'Agachamento sissy assistido' }),
+      X('Panturrilha em pé', 4, 15, 20, 30, FALHA, { casa: 'Panturrilha unilateral em degrau' }),
+    ]},
+    C: { nome: 'Costas e bíceps', ex: [
+      X('Puxada frente', 4, 10, 12, 0, BISET, { m: 'biset', casa: 'Barra fixa' }),
+      X('Remada baixa (triângulo)', 4, 10, 12, 75, 'Logo após a puxada', { casa: 'Remada com elástico' }),
+      X('Remada unilateral com halter', 3, 10, 12, 60),
+      X('Pulldown na corda', 3, 12, 15, 0, BISET, { m: 'biset', casa: 'Pullover com halter' }),
+      X('Rosca direta com barra W', 3, 10, 12, 60, 'Logo após o pulldown', { casa: 'Rosca direta com halteres' }),
+      X('Rosca martelo', 3, 12, 15, 45),
+    ]},
+    D: { nome: 'Ombros e braços', ex: [
+      X('Desenvolvimento na máquina', 4, 10, 12, 75, FALHA, { casa: 'Desenvolvimento com halteres sentado' }),
+      X('Elevação lateral no cabo', 4, 12, 15, 0, BISET, { m: 'biset', casa: 'Elevação lateral com elástico' }),
+      X('Crucifixo inverso na máquina', 4, 12, 15, 45, 'Logo após a elevação lateral', { casa: 'Crucifixo inverso com halteres' }),
+      X('Rosca no cabo', 3, 12, 15, 0, BISET, { m: 'biset', casa: 'Rosca alternada com halteres' }),
+      X('Tríceps na polia com barra reta', 3, 12, 15, 45, 'Logo após a rosca', { casa: 'Tríceps coice com halter' }),
+      X('Face pull na corda', 3, 15, 20, 45, FALHA, { casa: 'Crucifixo inverso com elástico' }),
+    ]},
+    E: { nome: 'Posterior, glúteo e condicionamento', ex: [
+      X('Stiff com halteres', 4, 10, 12, 0, BISET, { m: 'biset', risk: ['lombar'], seguro: 'Mesa flexora' }),
+      X('Elevação pélvica com barra (hip thrust)', 4, 10, 12, 75, 'Logo após o stiff', { casa: 'Elevação pélvica com halter' }),
+      X('Mesa flexora', 3, 12, 15, 45, FALHA, { casa: 'Flexão nórdica assistida' }),
+      X('Cadeira abdutora', 3, 15, 20, 45, FALHA, { casa: 'Abdução com elástico' }),
+      X('Panturrilha sentado', 3, 15, 20, 30, FALHA, { casa: 'Panturrilha unilateral em degrau' }),
+      X('Bike ergométrica intervalada', 1, 8, 8, 0, '8 tiros de 20 s forte e 40 s leve (anote os tiros em "reps")', { semCarga: 1, casa: 'Polichinelo ou corrida no lugar, 20 s forte / 40 s leve' }),
+    ]},
+  }},
+  p6: { nome: 'Ondulada', foco: 'Dias pesados (A, B, C) e dias de volume (D, E) na mesma semana', quando: 'nov–dez 2027', treinos: {
+    A: { nome: 'Empurrar · pesado', ex: [
+      X('Supino reto com barra', 4, 4, 6, 180, PESADO, { pre: '2–3 aproximações', risk: ['ombro'], seguro: 'Supino máquina, pegada neutra', casa: 'Supino reto com halteres' }),
+      X('Supino inclinado com halteres', 3, 6, 8, 120),
+      X('Desenvolvimento militar em pé', 3, 5, 7, 150, PESADO, { risk: ['ombro', 'lombar'], seguro: 'Desenvolvimento na máquina', casa: 'Desenvolvimento com halteres sentado' }),
+      X('Mergulho nas paralelas (com peso se passar de 10)', 3, 6, 8, 120, FALHA, { risk: ['ombro'], seguro: 'Supino fechado', casa: 'Flexão fechada (diamante)' }),
+      X('Elevação lateral com halteres', 3, 10, 12, 45),
+    ]},
+    B: { nome: 'Pernas · pesado', ex: [
+      X('Agachamento livre', 4, 4, 6, 180, PESADO, { pre: '1×10 leve e 2–3 aproximações', risk: ['joelho', 'lombar'], seguro: 'Leg press 45° pesado', casa: 'Agachamento goblet com pausa' }),
+      X('Levantamento terra romeno', 3, 6, 8, 150, PESADO, { risk: ['lombar'], seguro: 'Mesa flexora pesada', casa: 'Stiff com halteres' }),
+      X('Leg press 45°', 3, 8, 10, 120, FALHA, { casa: 'Afundo com halteres' }),
+      X('Panturrilha em pé', 4, 8, 10, 60, 'Pausa de 1 s embaixo', { casa: 'Panturrilha unilateral em degrau' }),
+    ]},
+    C: { nome: 'Puxar · pesado', ex: [
+      X('Barra fixa (com peso se passar de 7)', 4, 5, 7, 150, PESADO, { casa: 'Barra fixa' }),
+      X('Remada curvada pronada', 4, 6, 8, 120, FALHA, { risk: ['lombar'], seguro: 'Remada com peito apoiado no banco', casa: 'Remada curvada com halteres' }),
+      X('Remada cavalinho', 3, 8, 10, 90, FALHA, { casa: 'Remada unilateral com halter' }),
+      X('Rosca direta com barra', 3, 6, 8, 90, FALHA, { casa: 'Rosca direta com halteres' }),
+      X('Rosca martelo', 3, 8, 10, 60),
+    ]},
+    D: { nome: 'Superiores · volume', ex: [
+      X('Supino inclinado na máquina', 3, 12, 15, 60, FALHA, { casa: 'Flexão de braço' }),
+      X('Crucifixo no cabo', 3, 15, 20, 45, FALHA, { casa: 'Crucifixo com elástico' }),
+      X('Puxada pegada neutra', 3, 12, 15, 60, FALHA, { casa: 'Remada com elástico' }),
+      X('Remada baixa (triângulo)', 3, 12, 15, 60, FALHA, { casa: 'Remada unilateral com halter' }),
+      X('Elevação lateral no cabo', 4, 15, 20, 30, FALHA, { casa: 'Elevação lateral com elástico' }),
+      X('Tríceps na corda', 3, 15, 20, 0, BISET, { m: 'biset', casa: 'Tríceps coice com halter' }),
+      X('Rosca no cabo', 3, 15, 20, 45, 'Logo após o tríceps', { casa: 'Rosca alternada com halteres' }),
+    ]},
+    E: { nome: 'Pernas · volume', ex: [
+      X('Agachamento hack', 4, 12, 15, 90, FALHA, { risk: ['joelho'], seguro: 'Leg press com pés altos', casa: 'Agachamento búlgaro com halteres' }),
+      X('Cadeira extensora', 3, 15, 20, 45, 'Drop set na última série', { m: 'drop', casa: 'Afundo andando' }),
+      X('Cadeira flexora sentada', 4, 12, 15, 45, FALHA, { casa: 'Stiff unilateral com halter' }),
+      X('Elevação pélvica com barra (hip thrust)', 3, 12, 15, 60, FALHA, { casa: 'Elevação pélvica com halter' }),
+      X('Cadeira abdutora', 3, 20, 20, 45, FALHA, { casa: 'Abdução com elástico' }),
+      X('Panturrilha sentado', 4, 15, 20, 30, FALHA, { casa: 'Panturrilha unilateral em degrau' }),
+    ]},
+  }},
+};
+const ORDEM_PROG = ['p0', 'p1', 'p2', 'p3', 'p4', 'p5', 'p6'];
+const SEMANAS_BLOCO = 8;
+const progAtual = () => PROGRAMAS[S.treino.prog] ? S.treino.prog : 'p0';
+function blocoInfo() {
+  const inicio = S.treino.progInicio || (S.logs.treinos.map(s => s.data).sort()[0]) || hoje();
+  const semana = Math.floor(Math.max(0, diasEntre(inicio, hoje())) / 7) + 1;
+  const id = progAtual(), i = ORDEM_PROG.indexOf(id), prox = ORDEM_PROG[(i + 1) % ORDEM_PROG.length];
+  return { id, p: PROGRAMAS[id], inicio, semana, descarga: semana === SEMANAS_BLOCO, acabou: semana > SEMANAS_BLOCO, prox };
+}
+
+
 function programa() {
   const t = S.treino, exp = t.experiencia || 'inter', casa = t.local === 'casa', curto = +t.tempo && +t.tempo <= 45, rs = t.restricoes || [];
-  const out = {};
-  for (const [id, tr] of Object.entries(PROG)) {
+  const out = {}, b = blocoInfo(), pid = b.id;
+  for (const [id, tr] of Object.entries(b.p.treinos)) {
     out[id] = { id, nome: tr.nome, ex: tr.ex.map((e, i) => {
-      const x = { ...e, id: id + i, obs: [] };
+      const x = { ...e, id: (pid === 'p0' ? '' : pid + '-') + id + i, obs: [] };
       if (casa && e.casa) { x.n = e.casa; x.obs.push('versão para casa'); }
       const hit = (e.risk || []).filter(k => rs.includes(k));
-      if (hit.length && e.seguro) { x.n = e.seguro; x.obs.push('trocado por causa de ' + hit.join(' e ')); }
+      const precisaAparelho = /máquina|cabo|polia|leg press|mesa|cadeira|smith/i.test(e.seguro || '');
+      if (hit.length && e.seguro && !(casa && precisaAparelho)) { x.n = e.seguro; x.obs.push('trocado por causa de ' + hit.join(' e ')); }
+      else if (hit.length) x.obs.push(`carga moderada e amplitude confortável por causa de ${hit.join(' e ')}`);
       if (exp === 'ini') {
         if (x.m === 'fst7') { x.sets = 3; x.int = 60; x.tec = '3 séries normais com 2–3 repetições em reserva. O FST-7 entra quando você tiver mais de 6 meses de treino.'; }
         else if (x.m) x.tec = '2–3 repetições em reserva, sem drop set ou pirâmide por enquanto';
         else x.tec = x.tec.replace(/Próximo da falha|Até a falha/g, '2–3 repetições em reserva');
+        if (x.m === 'biset' || !x.int) x.int = x.semCarga ? 0 : 60;
         x.m = null; x.sets = Math.min(x.sets, 3);
       }
       if (curto) { x.sets = x.m === 'fst7' ? 4 : Math.min(x.sets, 3); }
+      if (b.descarga && !x.aq) { x.sets = Math.max(1, Math.ceil(x.sets * 0.6)); x.tec = 'Semana de descarga: mesma carga, sem técnicas avançadas, pare com 3–4 repetições em reserva'; if (x.m === 'biset') x.int = 60; x.m = null; }
       return x;
     }) };
   }
@@ -694,13 +969,24 @@ function programa() {
 }
 function treinosAtivos() { const d = clamp(+S.treino.dias || 5, 3, 5); return [...new Set(SEMANA[d].filter(Boolean))].sort(); }
 function treinoDoDia() { const d = clamp(+S.treino.dias || 5, 3, 5); return SEMANA[d][(new Date().getDay() + 6) % 7]; }
-function ultimaSerie(exId) {
-  const L = S.logs.treinos.filter(s => s.ex && s.ex[exId] && s.ex[exId].length).sort((a, b) => a.data.localeCompare(b.data));
-  const u = L[L.length - 1];
-  return u ? { data: u.data, sets: u.ex[exId] } : null;
+/* Nome do exercício registrado numa sessão (sessões antigas do Peito de Aço não guardavam o nome) */
+function nomeNoLog(sessao, exId) {
+  if (sessao.nomes && sessao.nomes[exId]) return sessao.nomes[exId];
+  const m = /^([A-E])(\d+)$/.exec(exId); if (!m || !PROG[m[1]]) return null;
+  const e = PROG[m[1]].ex[+m[2]]; return e ? e.n : null;
+}
+const normal = n => (n || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s*\(.*?\)\s*/g, ' ').trim();
+function ultimaSerie(ex) {
+  const alvo = normal(ex.n); let u = null;
+  for (const s of S.logs.treinos) for (const [k, sets] of Object.entries(s.ex || {})) {
+    if (!sets.length) continue;
+    if (k === ex.id || normal(nomeNoLog(s, k)) === alvo) if (!u || s.data > u.data) u = { data: s.data, sets };
+  }
+  return u;
 }
 function sugestao(ex) {
-  const u = ultimaSerie(ex.id);
+  if (ex.semCarga) return { kg: null, txt: '' };
+  const u = ultimaSerie(ex);
   if (!u) return { kg: null, txt: 'Primeira vez: escolha uma carga que deixe 2 repetições em reserva.' };
   const kgs = u.sets.map(s => +s.kg || 0), reps = u.sets.map(s => +s.reps || 0);
   const kg = Math.max(...kgs), [mn, mx] = ex.f;
@@ -960,6 +1246,7 @@ function vHoje() {
   ${S.onboarded && (!S.ui.ultimoBackup || diasEntre(S.ui.ultimoBackup, hoje()) >= 7) ? `<div class="note small">${S.ui.ultimoBackup ? `Último backup em ${fmtData(S.ui.ultimoBackup)}.` : 'Você ainda não fez backup.'} Os dados ficam só neste aparelho e neste navegador. <button class="linkbtn" data-act="exportar">Baixar backup</button> · <button class="linkbtn" data-act="tab" data-tab="ajustes">copiar dados</button></div>` : ''}
   ${!storageOk ? '<div class="note bad">O navegador está bloqueando o salvamento. Abra o app pelo endereço publicado ou faça backup manual em Ajustes.</div>' : ''}
   <section class="panel"><div class="row between"><h2>Treino de hoje</h2>${fezHoje ? '<span class="chip ok">feito</span>' : ''}</div>
+    ${blocoInfo().acabou ? `<div class="note small">Bloco ${esc(blocoInfo().p.nome)} concluído. <button class="linkbtn" data-act="tab" data-tab="ajustes">Atualizar treino</button></div>` : blocoInfo().descarga ? '<p class="small muted">Semana de descarga do bloco.</p>' : ''}
     ${tr ? `<p><b>Treino ${td}</b> · ${tr.nome} · <span class="muted">${tr.ex.length} exercícios</span></p><div><button class="btn" data-act="abrirTreino" data-id="${td}">Abrir treino ${td}</button></div>` : '<p class="muted">Dia de descanso. Recuperação e sono fazem parte do treino: é no repouso que a síntese de proteína muscular acontece.</p>'}</section>
   <section class="panel"><h2>Alimentação</h2>
     <div class="grid2"><div class="stat"><span>Calorias</span><b>${n0(pl.kcal)}</b></div><div class="stat"><span>Proteína</span><b>${pl.prot} g</b></div><div class="stat"><span>Carboidrato</span><b>${pl.carb} g</b></div><div class="stat"><span>Gordura</span><b>${pl.fat} g</b></div></div>
@@ -1034,20 +1321,23 @@ function vTreino() {
   let sel = S.ui.treinoSel && ativos.includes(S.ui.treinoSel) ? S.ui.treinoSel : (td || ativos[0]);
   const tr = prog[sel], idxHoje = (new Date().getDay() + 6) % 7, casa = S.treino.local === 'casa';
   const hist = [...S.logs.treinos].sort((a, b) => b.data.localeCompare(a.data)).slice(0, 8);
-  return `<section class="hero"><p class="eyebrow">Treino · ${{ ini: 'iniciante', inter: 'intermediário', avan: 'avançado' }[S.treino.experiencia || 'inter']} · ${casa ? 'em casa' : 'academia'}</p><h1>Treino ${sel}</h1><p class="muted">${tr.nome}</p></section>
+  const b = blocoInfo();
+  return `<section class="hero"><p class="eyebrow">${esc(b.p.nome)} · semana ${Math.min(b.semana, SEMANAS_BLOCO)} de ${SEMANAS_BLOCO} · ${casa ? 'em casa' : 'academia'}</p><h1>Treino ${sel}</h1><p class="muted">${tr.nome}</p></section>
+  ${b.descarga ? '<div class="note info">Semana de descarga: menos séries e sem ir até a falha. Ela serve para recuperar articulações e sistema nervoso antes do próximo bloco.</div>' : ''}
+  ${b.acabou ? `<div class="note">Você completou as ${SEMANAS_BLOCO} semanas do ${esc(b.p.nome)}. Próximo bloco sugerido: <b>${esc(PROGRAMAS[b.prox].nome)}</b>. <button class="linkbtn" data-act="tab" data-tab="ajustes">Atualizar treino</button></div>` : ''}
   <section class="panel"><h2>Sua semana</h2><div class="week">${SEMANA[d].map((t, i) => `<div class="${i === idxHoje ? 'today' : ''} ${t ? '' : 'off'}"><span class="muted">${DIAS[i]}</span><b>${t || '–'}</b></div>`).join('')}</div>
-    ${d === 5 ? '<p class="small muted">Peito 2x por semana (A e D), com um dia de descanso entre C e D. Se não der para treinar 5 dias, pule o E.</p>' : d === 4 ? '<p class="small muted">Versão de 4 dias: o treino E sai, como prevê o programa original.</p>' : '<p class="small muted">Versão de 3 dias: empurrar (A), puxar (C) e pernas (B), com descanso entre eles.</p>'}
+    <p class="small muted">Foco do bloco: ${esc(b.p.foco)}.${d === 4 ? ' Na versão de 4 dias o treino E sai.' : d === 3 ? ' Na versão de 3 dias ficam A, C e B, com descanso entre eles.' : ''}</p>
     <div class="seg" role="group" aria-label="Escolher treino">${ativos.map(t => `<button data-act="treinoSel" data-id="${t}" aria-pressed="${t === sel}">${t}${t === td ? ' · hoje' : ''}</button>`).join('')}</div></section>
   <form class="panel" data-form="sessao" data-id="${sel}"><div class="row between"><h2>Exercícios</h2>${fTxt('data', '', hoje(), { type: 'date' }).replace('<label class="f" for="f-data">', '<label class="f" for="f-data" style="width:auto">')}</div>
-    <div class="stack">${tr.ex.map(e => { const sg = sugestao(e); return `<div class="ex"><div class="ex-head"><div><h3>${esc(e.n)}</h3>
+    <div class="stack">${tr.ex.map(e => { const sg = sugestao(e); return `<div class="ex"><div class="ex-head"><div><h3>${esc(e.n)} <a class="small" style="font-family:var(--f-body);font-weight:400" href="https://www.youtube.com/results?search_query=${encodeURIComponent(e.n + ' execução correta')}" target="_blank" rel="noopener">ver execução</a></h3>
       <p class="small"><b class="num">${e.sets} × ${e.f[0] === e.f[1] ? e.f[0] : e.f[0] + '–' + e.f[1]}</b> · ${esc(e.tec)}</p>
       ${e.pre ? `<p class="small muted">Antes: ${esc(e.pre)}</p>` : ''}${e.obs.length ? `<p class="small"><span class="tag">${e.obs.join(' · ')}</span></p>` : ''}</div>
       ${e.int ? `<button type="button" class="btn ghost sm" data-act="timer" data-s="${e.int}">${e.int} s</button>` : ''}</div>
-      ${e.aq ? '' : `<p class="small ${sg.up ? '' : 'muted'}" style="${sg.up ? 'color:var(--good)' : ''}">${esc(sg.txt)}</p>`}
-      <div class="sets"><span></span><span class="l">kg</span><span class="l">reps</span>${Array.from({ length: e.sets }, (_, i) => `<span class="l">${i + 1}ª</span><input aria-label="Carga série ${i + 1}" id="kg-${e.id}-${i}" name="kg-${e.id}-${i}" type="number" step="0.5" inputmode="decimal" value="${sg.kg ?? ''}"><input aria-label="Repetições série ${i + 1}" id="rp-${e.id}-${i}" name="rp-${e.id}-${i}" type="number" inputmode="numeric" placeholder="${e.f[0] === e.f[1] ? e.f[0] : e.f[0] + '–' + e.f[1]}">`).join('')}</div></div>`; }).join('')}</div>
+      ${e.aq || !sg.txt ? '' : `<p class="small ${sg.up ? '' : 'muted'}" style="${sg.up ? 'color:var(--good)' : ''}">${esc(sg.txt)}</p>`}
+      <div class="sets"><span></span><span class="l">${e.semCarga ? '' : 'kg'}</span><span class="l">reps</span>${Array.from({ length: e.sets }, (_, i) => `<span class="l">${i + 1}ª</span>${e.semCarga ? '<span></span>' : `<input aria-label="Carga série ${i + 1}" id="kg-${e.id}-${i}" name="kg-${e.id}-${i}" type="number" step="0.5" inputmode="decimal" value="${sg.kg ?? ''}">`}<input aria-label="Repetições série ${i + 1}" id="rp-${e.id}-${i}" name="rp-${e.id}-${i}" type="number" inputmode="numeric" placeholder="${e.f[0] === e.f[1] ? e.f[0] : e.f[0] + '–' + e.f[1]}">`).join('')}</div></div>`; }).join('')}</div>
     <div><button class="btn" type="submit">Salvar treino ${sel}</button></div></form>
   <section class="panel"><h2>Abdômen · 2x por semana</h2>${ABD.map(a => `<div class="li"><span>${esc(casa && a.casa ? a.casa : a.n)}</span><span class="num">${a.s}</span></div>`).join('')}<p class="small muted">No fim de qualquer treino ou junto com o cardio.</p></section>
-  <section class="panel"><h2>Como progredir</h2><ul class="small"><li>Passou do topo da faixa em todas as séries e ficou leve: aumente 5 a 10% da carga. O app sugere o novo peso.</li><li>Trabalhe entre 60% e 85% da sua carga máxima, perto da falha, e respeite os intervalos.</li><li>Sono e proteína fazem parte do treino: dormir pouco reduz a síntese de proteína muscular.</li><li>Clique no nome do exercício no seu PDF original para ver o vídeo de execução.</li></ul></section>
+  <section class="panel"><h2>Como progredir</h2><ul class="small"><li>Passou do topo da faixa em todas as séries e ficou leve: aumente 5 a 10% da carga. O app sugere o novo peso.</li><li>Trabalhe entre 60% e 85% da sua carga máxima, perto da falha, e respeite os intervalos.</li><li>Sono e proteína fazem parte do treino: dormir pouco reduz a síntese de proteína muscular.</li><li>Cada bloco dura ${SEMANAS_BLOCO} semanas; a última é de descarga. Depois, use "Atualizar treino" em Ajustes. Suas cargas acompanham o exercício de um bloco para o outro.</li></ul></section>
   <section class="panel"><h2>Histórico</h2>${hist.length ? `<div class="list">${hist.map(s => `<div class="li small"><span>${fmtData(s.data)} · Treino ${s.id} · ${Object.keys(s.ex).length} exercícios</span><button class="x" data-act="rmSessao" data-k="${s.k}" aria-label="Apagar sessão">×</button></div>`).join('')}</div>` : '<p class="muted small">Nenhum treino salvo ainda. Preencha as cargas e repetições acima e toque em salvar.</p>'}</section>`;
 }
 
@@ -1134,11 +1424,25 @@ function vProgresso() {
   ${L.length ? `<section class="panel"><h2>Registros</h2><div class="tw"><table><thead><tr><th>Data</th><th class="r">Peso</th><th class="r">Gordura</th><th class="r">Cintura</th><th class="r">Pescoço</th><th></th></tr></thead><tbody>${[...L].reverse().slice(0, 20).map(x => `<tr><td>${fmtData(x.data)}</td><td class="r num">${x.peso ? n1(x.peso) : '–'}</td><td class="r num">${x.gordura ? n1(x.gordura) + '%' : '–'}</td><td class="r num">${x.cintura ? n1(x.cintura) : '–'}</td><td class="r num">${x.pescoco ? n1(x.pescoco) : '–'}</td><td class="r"><button class="x linkbtn" data-act="rmCorpo" data-d="${x.data}" aria-label="Apagar">×</button></td></tr>`).join('')}</tbody></table></div></section>` : ''}`;
 }
 
-let confirmApagar = false;
+let confirmApagar = false, confirmProg = null;
+function vProgramas() {
+  const b = blocoInfo(), hist = S.treino.historico || [];
+  return `<section class="panel"><h2>Programa de treino</h2>
+    <div class="row between"><div><b>${esc(b.p.nome)}</b><br><span class="small muted">desde ${fmtData(b.inicio)} · semana ${b.semana} de ${SEMANAS_BLOCO}</span></div><span class="chip ${b.acabou ? 'warn' : b.descarga ? '' : 'ok'}">${b.acabou ? 'concluído' : b.descarga ? 'descarga' : 'em andamento'}</span></div>
+    <p class="small muted">${esc(b.p.foco)}.</p>
+    <div class="stack"><button class="btn" data-act="progTroca" data-id="${b.prox}">${confirmProg === b.prox ? `Confirmar: começar ${esc(PROGRAMAS[b.prox].nome)} hoje` : `Atualizar treino → ${esc(PROGRAMAS[b.prox].nome)}`}</button>
+    <p class="small muted">Começa o próximo bloco a partir de hoje. Seu histórico e suas cargas continuam salvos. Depois do último bloco, o rodízio volta ao primeiro, e você repete com cargas maiores.</p></div>
+    <details><summary>Todos os blocos (${ORDEM_PROG.length})</summary><div class="stack" style="margin-top:8px">${ORDEM_PROG.map(id => { const p = PROGRAMAS[id]; return `<div style="border-top:1px solid var(--line);padding-top:10px" class="stack">
+      <div class="row between"><b>${esc(p.nome)}</b><span class="tag">${p.quando}</span></div><p class="small muted">${esc(p.foco)}.</p>
+      <details><summary class="small">Ver treinos</summary>${Object.entries(p.treinos).map(([l, t]) => `<p class="small"><b>${l} · ${esc(t.nome)}:</b> ${t.ex.map(e => `${esc(e.n)} ${e.sets}×${e.f[0] === e.f[1] ? e.f[0] : e.f[0] + '–' + e.f[1]}`).join(' · ')}</p>`).join('')}</details>
+      ${id === b.id ? '<span class="small muted">Bloco atual</span>' : `<div><button class="btn ghost sm" data-act="progTroca" data-id="${id}">${confirmProg === id ? 'Toque de novo para confirmar' : 'Usar este bloco'}</button></div>`}</div>`; }).join('')}</div></details>
+    ${hist.length ? `<details><summary>Blocos anteriores (${hist.length})</summary><div class="list">${[...hist].reverse().map(h => `<div class="li small"><span>${esc((PROGRAMAS[h.prog] || {}).nome || h.prog)}</span><span class="muted">${fmtData(h.inicio)} a ${fmtData(h.fim)}</span></div>`).join('')}</div></details>` : ''}</section>`;
+}
 function vAjustes() {
   return `<section class="hero"><p class="eyebrow">Ajustes</p><h1>Questionários e backup</h1></section>
   <section class="panel"><h2>Refazer questionários</h2><p class="small muted">Seus planos se recalculam na hora. Refaça quando mudar de fase no protocolo FODMAP, de rotina de treino ou de renda.</p>
     <div class="row"><button class="btn ghost" data-act="refazer" data-s="corpo,rotina,intestino">Saúde e alimentação</button><button class="btn ghost" data-act="refazer" data-s="treino">Treino</button><button class="btn ghost" data-act="refazer" data-s="fin">Finanças</button><button class="btn ghost" data-act="refazer" data-s="">Todos</button></div></section>
+  ${vProgramas()}
   <section class="panel"><h2>Backup</h2><p class="small muted">Os dados ficam só neste navegador. Baixe um backup de vez em quando e antes de trocar de celular.</p>
     <div class="row"><button class="btn" data-act="exportar">Baixar backup (.json)</button><button class="btn ghost" data-act="copiar">Copiar dados</button></div>
     <form class="stack" data-form="importar"><label class="f" for="f-imp">Restaurar backup<span class="h">cole o conteúdo do arquivo .json ou escolha o arquivo</span><textarea id="f-imp" name="json"></textarea></label>
@@ -1151,7 +1455,14 @@ function vAjustes() {
     <li>Chedid et al. (2024). Manejo dietético e clínico do SIBO, revisão narrativa. <i>MDPI Dietetics</i>. <a href="https://www.mdpi.com/2674-0311/5/1/10" target="_blank" rel="noopener">link</a></li>
     <li>Monash University. Protocolo low FODMAP em 3 fases e porções seguras de cada alimento. <a href="https://www.monashfodmap.com/" target="_blank" rel="noopener">monashfodmap.com</a></li>
     <li>Mifflin-St Jeor (1990) e Katch-McArdle para metabolismo basal; fórmula da Marinha dos EUA (Hodgdon & Beckett, 1984) para gordura corporal.</li>
-    <li>Programa de treino ABCDE de uso pessoal (foco em peito e ombros).</li></ul></section>
+    <li>Programa de treino ABCDE de uso pessoal (foco em peito e ombros), base do bloco Peito de Aço.</li>
+    <li>Schoenfeld, Ogborn & Krieger (2017). Relação dose-resposta entre volume semanal e hipertrofia. <i>J Sports Sci</i> 35(11). Base para 10–20 séries por músculo por semana.</li>
+    <li>Schoenfeld, Ogborn & Krieger (2016). Frequência de treino e hipertrofia. <i>Sports Med</i> 46(11). Base para treinar cada músculo 2x por semana.</li>
+    <li>Schoenfeld et al. (2017). Cargas baixas × altas na hipertrofia. <i>J Strength Cond Res</i> 31(12). Faixas de 6 a 30 reps funcionam perto da falha; por isso os blocos alternam força e volume.</li>
+    <li>Schoenfeld et al. (2016). Intervalos de descanso longos em treinados. <i>J Strength Cond Res</i> 30(7). Base para 2–3 min nos compostos pesados.</li>
+    <li>Maeo et al. (2021 e 2023). Treino em posição alongada: cadeira flexora sentada (<i>Med Sci Sports Exerc</i> 53(4)) e tríceps acima da cabeça (<i>Eur J Sport Sci</i> 23(7)).</li>
+    <li>Kassiano et al. (2022). Variação de exercícios na hipertrofia. <i>J Strength Cond Res</i> 36(6). Base para trocar o bloco a cada 8 semanas.</li>
+    <li>Bell et al. (2023). Consenso sobre semanas de descarga (deload). <i>Sports Med Open</i> 9.</li></ul></section>
   <section class="panel"><h2>Apagar tudo</h2><p class="small muted">Remove todos os dados deste navegador. Não dá para desfazer sem um backup.</p><div><button class="btn danger" data-act="apagar">${confirmApagar ? 'Toque de novo para apagar tudo' : 'Apagar todos os dados'}</button></div></section>`;
 }
 
@@ -1183,9 +1494,12 @@ function iniciarTimer(s) {
 }
 
 const ACTIONS = {
-  tab: b => { S.ui.tab = b.dataset.tab; confirmApagar = false; save(); render(); window.scrollTo(0, 0); },
+  tab: b => { S.ui.tab = b.dataset.tab; confirmApagar = false; confirmProg = null; save(); render(); window.scrollTo(0, 0); },
   wizBack: () => { wiz.i = Math.max(0, wiz.i - 1); render(); window.scrollTo(0, 0); },
   wizCancel: () => { wiz = null; render(); },
+  progTroca: b => { const id = b.dataset.id; if (confirmProg !== id) { confirmProg = id; render(); return; }
+    const atual = blocoInfo(); S.treino.historico = [...(S.treino.historico || []), { prog: atual.id, inicio: atual.inicio, fim: hoje() }];
+    S.treino.prog = id; S.treino.progInicio = hoje(); S.ui.treinoSel = null; confirmProg = null; save(); render(); toast(`Bloco ${PROGRAMAS[id].nome} iniciado`); },
   refazer: b => startWizard(b.dataset.s ? b.dataset.s.split(',') : null),
   abrirTreino: b => { S.ui.treinoSel = b.dataset.id; S.ui.tab = 'treino'; save(); render(); window.scrollTo(0, 0); },
   treinoSel: b => { S.ui.treinoSel = b.dataset.id; save(); render(); },
@@ -1222,7 +1536,8 @@ const FORMS = {
   sessao: (fd, f) => { const id = f.dataset.id, tr = programa()[id], ex = {};
     tr.ex.forEach(e => { const sets = []; for (let i = 0; i < e.sets; i++) { const kg = num(fd.get(`kg-${e.id}-${i}`)), reps = num(fd.get(`rp-${e.id}-${i}`)); if (reps) sets.push({ kg: kg || 0, reps }); } if (sets.length) ex[e.id] = sets; });
     if (!Object.keys(ex).length) { toast('Preencha as repetições de pelo menos uma série'); return; }
-    S.logs.treinos.push({ k: novaChave(), data: fd.get('data') || hoje(), id, ex }); save(); render(); window.scrollTo(0, 0); toast(`Treino ${id} salvo`); },
+    const nomes = Object.fromEntries(tr.ex.filter(e => ex[e.id]).map(e => [e.id, e.n]));
+    S.logs.treinos.push({ k: novaChave(), data: fd.get('data') || hoje(), id, ex, nomes, prog: progAtual() }); save(); render(); window.scrollTo(0, 0); toast(`Treino ${id} salvo`); },
   gasto: fd => { const v = num(fd.get('valor')); if (!v) return; const pg = fd.get('pg') || 'conta', data = fd.get('data') || hoje(), parc = pg === 'conta' ? 1 : +fd.get('parc') || 1;
     S.logs.gastos.push({ k: novaChave(), data, desc: (fd.get('desc') || '').trim(), valor: v, cat: fd.get('cat'), pg, parc }); S.ui.ultPg = pg; save(); render();
     const c = cartaoPor(pg); toast(c ? `Na fatura que vence em ${fmtData(diaVenc(mesFatura(data, c), +c.vence))}` : 'Lançamento adicionado'); },
